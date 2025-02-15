@@ -26,7 +26,7 @@ RUN apt-get update && apt-get install -y \
     libgdk-pixbuf2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# Step 3: Install Chromium
+# Step 3: Install Chromium directly from the APT repository
 RUN apt-get update && apt-get install -y chromium
 
 # Step 4: Set the environment variable for Chromium executable
