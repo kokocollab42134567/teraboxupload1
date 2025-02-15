@@ -24,11 +24,20 @@ const wss = new Server({ noServer: true });
 let browser;
 let page;
 
-// 🟢 Initialize Puppeteer on Server Start
 async function initPuppeteer() {
+    // If running in Render, set a custom executable path for Puppeteer
+    const executablePath = process.env.CHROME_EXECUTABLE_PATH || puppeteer.executablePath();
+
     browser = await puppeteer.launch({
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        executablePath,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--window-size=1920x1080'
+        ]
     });
 
     page = await browser.newPage();
@@ -48,6 +57,7 @@ async function initPuppeteer() {
     const cookies = await page.cookies();
     fs.writeFileSync(COOKIES_PATH, JSON.stringify(cookies, null, 2));
 }
+
 
 // 🟢 Upload File to TeraBox
 async function uploadToTeraBox(fileBuffer, fileName, ws) {
