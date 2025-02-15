@@ -25,20 +25,11 @@ let browser;
 let page;
 
 async function initPuppeteer() {
-    // If running in Render, set a custom executable path for Puppeteer
-    const executablePath = process.env.CHROME_EXECUTABLE_PATH || puppeteer.executablePath();
+    const browser = await puppeteer.launch({
+    headless: true,
+    executablePath: process.env.CHROME_EXECUTABLE_PATH, // Use the chromium path set earlier
+});
 
-    browser = await puppeteer.launch({
-        headless: true,
-        executablePath,
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
-            '--window-size=1920x1080'
-        ]
-    });
 
     page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 800 });
