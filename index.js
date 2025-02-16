@@ -130,12 +130,17 @@ async function uploadToTeraBox(fileBuffer, fileName, ws) {
 
         if (ws && ws.readyState === ws.OPEN) ws.send(JSON.stringify({ progress: 100, status: "Upload Complete!", link: shareLink }));
 
+        // ❗ Deselect the file by clicking on the checkbox again
+        await page.click(checkboxSelector);
+        console.log("🔄 Reset upload selection");
+
         return { success: true, link: shareLink };
     } catch (error) {
         console.error("❌ Upload error:", error);
         return { success: false, error: error.message };
     }
 }
+
 
 
 app.post('/upload', upload.single('file'), async (req, res) => {
