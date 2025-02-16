@@ -10,33 +10,29 @@ const app = express();
 const port = process.env.PORT || 3000;
 const COOKIES_PATH = path.resolve(__dirname, 'terabox_cookies.json');
 
-// Enable CORS
 app.use(cors());
 
-// Multer - Memory Storage (No Local Storage)
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-// WebSocket Server for Progress Updates
 const wss = new Server({ noServer: true });
 
-// Global Puppeteer variables
 let browser;
 let page;
 
+// 🟢 Initialize Puppeteer and Open Page Once
 async function initPuppeteer() {
     if (browser) return; // Prevent multiple instances
-    
+
     browser = await puppeteer.launch({
         headless: true,
-        executablePath: process.env.CHROME_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable',
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable',
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
     });
 
     page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 800 });
 
-    // Load cookies if available
     if (fs.existsSync(COOKIES_PATH)) {
         const cookies = JSON.parse(fs.readFileSync(COOKIES_PATH, 'utf8'));
         await page.setCookie(...cookies);
@@ -44,14 +40,13 @@ async function initPuppeteer() {
     }
 
     await page.goto('https://www.terabox.com/main?category=all', { waitUntil: 'networkidle2' });
-    console.log("✅ Logged into TeraBox.");
+    console.log("✅ Opened TeraBox page.");
 
-    // Save cookies after login
     const cookies = await page.cookies();
     fs.writeFileSync(COOKIES_PATH, JSON.stringify(cookies, null, 2));
 }
 
-// 🟢 Upload File to TeraBox
+// 🟢 Upload File Without Reloading Page
 async function uploadToTeraBox(fileBuffer, fileName, ws) {
     try {
         if (!browser || !page) {
@@ -61,7 +56,6 @@ async function uploadToTeraBox(fileBuffer, fileName, ws) {
 
         if (ws?.readyState === ws.OPEN) ws.send(JSON.stringify({ progress: 10, status: "Starting Upload..." }));
 
-        await page.reload({ waitUntil: 'networkidle2' });
         await page.evaluate(() => document.body.click());
 
         if (ws?.readyState === ws.OPEN) ws.send(JSON.stringify({ progress: 30, status: "Uploading File..." }));
@@ -107,7 +101,7 @@ async function uploadToTeraBox(fileBuffer, fileName, ws) {
     }
 }
 
-// 🟢 API Endpoint to Handle File Uploads
+// 🟢 API Endpoint for Upload
 app.post('/upload', upload.single('file'), async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ success: false, message: "No file uploaded." });
@@ -119,13 +113,13 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     res.json(result);
 });
 
-// 🟢 Start Server
+// 🟢 Start Server and Initialize Puppeteer Once
 const server = app.listen(port, async () => {
-    await initPuppeteer();
+    await initPuppeteer(); // Open the page once
     console.log(`🚀 Server running at http://localhost:${port}`);
 });
 
-// 🟢 Handle WebSocket Upgrade
+// 🟢 WebSocket Support
 server.on("upgrade", (request, socket, head) => {
     wss.handleUpgrade(request, socket, head, (ws) => {
         ws.on("message", (message) => console.log("💬 WebSocket message:", message));
