@@ -69,71 +69,67 @@ async function initPuppeteer() {
 }
 
 async function uploadToTeraBox(fileBuffer, fileName) {
-    try {
-        if (!browser || !page || page.isClosed()) {
-            console.log("⚠️ Browser or page closed, restarting...");
-            await initPuppeteer();
-        }
+    let uploadPage;
+    let retryCount = 0;
+    const maxRetries = 3;
 
-        // Open a new page for each upload
-        const uploadPage = await browser.newPage();
-        await uploadPage.setViewport({ width: 1280, height: 800 });
-        await uploadPage.setUserAgent(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
-        );
-
-        // Load session cookies if available
-        if (fs.existsSync(COOKIES_PATH)) {
-            const cookies = JSON.parse(fs.readFileSync(COOKIES_PATH, 'utf8'));
-            await uploadPage.setCookie(...cookies);
-        }
-
-        console.log("🌍 Navigating to TeraBox...");
+    while (retryCount < maxRetries) {
         try {
-            await uploadPage.goto('https://www.terabox.com/main?category=all', { waitUntil: 'load', timeout: 15000 });
-        } catch (err) {
-            console.log("⚠️ Initial navigation failed, retrying...");
-            await uploadPage.reload({ waitUntil: 'load' });
-        }
+            console.log(`🔄 Attempt ${retryCount + 1} to upload: ${fileName}`);
 
-        console.log("✅ Page loaded successfully.");
-
-        // Ensure the file input is available
-        const fileInputSelector = 'input#h5Input0';
-        await uploadPage.waitForSelector(fileInputSelector, { visible: true });
-
-        // Convert buffer to base64
-        const base64File = fileBuffer.toString('base64');
-
-        // Simulate file upload
-        await uploadPage.evaluate((selector, fileBase64, fileName) => {
-            const input = document.querySelector(selector);
-            const data = atob(fileBase64);
-            const array = new Uint8Array(data.length);
-            for (let i = 0; i < data.length; i++) {
-                array[i] = data.charCodeAt(i);
+            if (!browser || browser.isClosed()) {
+                console.log("⚠️ Browser is closed, restarting...");
+                await initPuppeteer();
             }
-            const file = new File([array], fileName, { type: "application/octet-stream" });
-            const dt = new DataTransfer();
-            dt.items.add(file);
-            input.files = dt.files;
-            input.dispatchEvent(new Event('change', { bubbles: true }));
-        }, fileInputSelector, base64File, fileName);
 
-        console.log(`📤 Uploaded file: ${fileName}`);
+            uploadPage = await browser.newPage();
+            await uploadPage.setViewport({ width: 1280, height: 800 });
 
-        // Store initial row ID before upload
-        const firstRowSelector = 'tbody tr:first-child';
-        let initialRowId = await uploadPage.evaluate((selector) => {
-            const row = document.querySelector(selector);
-            return row ? row.getAttribute('data-id') : null;
-        }, firstRowSelector);
+            if (fs.existsSync(COOKIES_PATH)) {
+                const cookies = JSON.parse(fs.readFileSync(COOKIES_PATH, 'utf8'));
+                await uploadPage.setCookie(...cookies);
+            }
 
-        console.log("📌 Stored initial row ID:", initialRowId);
+            console.log("🌍 Navigating to TeraBox...");
+            await uploadPage.goto('https://www.terabox.com/main?category=all', { waitUntil: 'load', timeout: 15000 });
 
-        // Wait for upload completion
-        console.log("⏳ Waiting for the upload to complete...");
-        try {
+            console.log("✅ Page loaded successfully.");
+
+            // Ensure the file input is available
+            const fileInputSelector = 'input#h5Input0';
+            await uploadPage.waitForSelector(fileInputSelector, { visible: true, timeout: 30000 });
+
+            // Convert buffer to base64
+            const base64File = fileBuffer.toString('base64');
+
+            // Simulate file upload
+            await uploadPage.evaluate((selector, fileBase64, fileName) => {
+                const input = document.querySelector(selector);
+                const data = atob(fileBase64);
+                const array = new Uint8Array(data.length);
+                for (let i = 0; i < data.length; i++) {
+                    array[i] = data.charCodeAt(i);
+                }
+                const file = new File([array], fileName, { type: "application/octet-stream" });
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                input.files = dt.files;
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+            }, fileInputSelector, base64File, fileName);
+
+            console.log(`📤 Uploaded file: ${fileName}`);
+
+            // Store initial row ID before upload
+            const firstRowSelector = 'tbody tr:first-child';
+            let initialRowId = await uploadPage.evaluate((selector) => {
+                const row = document.querySelector(selector);
+                return row ? row.getAttribute('data-id') : null;
+            }, firstRowSelector);
+
+            console.log("📌 Stored initial row ID:", initialRowId);
+
+            // Wait for upload completion
+            console.log("⏳ Waiting for the upload to complete...");
             await uploadPage.waitForFunction(
                 (selector, initialId) => {
                     const row = document.querySelector(selector);
@@ -143,51 +139,54 @@ async function uploadToTeraBox(fileBuffer, fileName) {
                 firstRowSelector,
                 initialRowId
             );
-        } catch (err) {
-            console.log("⚠️ Upload timeout or page detached:", err.message);
+
+            console.log("✅ Upload finished, new file detected.");
+
+            // Select the first row
+            await uploadPage.waitForSelector(firstRowSelector, { visible: true });
+            await uploadPage.click(firstRowSelector);
+            console.log("✅ Selected first row");
+
+            // Select checkbox
+            const checkboxSelector = 'tbody tr:first-child .wp-s-pan-table__body-row--checkbox-block.is-select';
+            await uploadPage.waitForSelector(checkboxSelector, { visible: true });
+            await uploadPage.click(checkboxSelector);
+            console.log("✅ Selected checkbox");
+
+            // Click Share button
+            const shareButtonSelector = '[title="Share"]';
+            await uploadPage.waitForSelector(shareButtonSelector, { visible: true });
+            await uploadPage.click(shareButtonSelector);
+            console.log("✅ Clicked Share button");
+
+            // Copy the share link
+            const copyButtonSelector = '.private-share-btn';
+            await uploadPage.waitForSelector(copyButtonSelector, { visible: true, timeout: 30000 });
+            await uploadPage.click(copyButtonSelector);
+            console.log("✅ Clicked Copy Link button");
+
+            // Get the share link
+            const linkSelector = '.copy-link-content p.text';
+            await uploadPage.waitForSelector(linkSelector, { visible: true, timeout: 30000 });
+            const shareLink = await uploadPage.$eval(linkSelector, el => el.textContent.trim());
+            console.log(`🔗 Share Link: ${shareLink}`);
+
             await uploadPage.close();
-            return { success: false, error: "Upload failed or timed out." };
+            return { success: true, link: shareLink };
+
+        } catch (error) {
+            console.log(`❌ Upload attempt ${retryCount + 1} failed: ${error.message}`);
+            retryCount++;
+            if (uploadPage) await uploadPage.close();
+
+            if (retryCount < maxRetries) {
+                console.log("🔄 Retrying upload after reloading...");
+                await new Promise(resolve => setTimeout(resolve, 5000));
+            } else {
+                console.log("🚫 Maximum retries reached. Upload failed.");
+                return { success: false, error: "Upload failed after multiple attempts." };
+            }
         }
-
-        console.log("✅ Upload finished, new file detected.");
-
-        // Select the first row
-        await uploadPage.waitForSelector(firstRowSelector, { visible: true });
-        await uploadPage.click(firstRowSelector);
-        console.log("✅ Selected first row");
-
-        // Select checkbox
-        const checkboxSelector = 'tbody tr:first-child .wp-s-pan-table__body-row--checkbox-block.is-select';
-        await uploadPage.waitForSelector(checkboxSelector, { visible: true });
-        await uploadPage.click(checkboxSelector);
-        console.log("✅ Selected checkbox");
-
-        // Click Share button
-        const shareButtonSelector = '[title="Share"]';
-        await uploadPage.waitForSelector(shareButtonSelector, { visible: true });
-        await uploadPage.click(shareButtonSelector);
-        console.log("✅ Clicked Share button");
-
-        // Copy the share link
-        const copyButtonSelector = '.private-share-btn';
-        await uploadPage.waitForSelector(copyButtonSelector, { visible: true, timeout: 30000 });
-        await uploadPage.click(copyButtonSelector);
-        console.log("✅ Clicked Copy Link button");
-
-        // Get the share link
-        const linkSelector = '.copy-link-content p.text';
-        await uploadPage.waitForSelector(linkSelector, { visible: true, timeout: 30000 });
-        const shareLink = await uploadPage.$eval(linkSelector, el => el.textContent.trim());
-        console.log(`🔗 Share Link: ${shareLink}`);
-
-        // Close the upload tab
-        await uploadPage.close();
-        console.log("❎ Closed the upload tab.");
-
-        return { success: true, link: shareLink };
-    } catch (error) {
-        console.error("❌ Upload error:", error);
-        return { success: false, error: error.message };
     }
 }
 
