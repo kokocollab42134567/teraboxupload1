@@ -23,18 +23,29 @@ const wss = new Server({ noServer: true });
 let browser;
 let page;
 
-// ** Initialize Puppeteer (Only Once) **
 async function initPuppeteer() {
     if (browser) return;
 
     browser = await puppeteer.launch({
         headless: true,
         executablePath: process.env.CHROME_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable',
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--disable-features=site-per-process',
+            '--disable-web-security'
+        ]
     });
 
     page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 800 });
+
+    // Use a real browser User-Agent
+    await page.setUserAgent(
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+    );
 
     // Load saved cookies if available
     if (fs.existsSync(COOKIES_PATH)) {
@@ -43,7 +54,12 @@ async function initPuppeteer() {
         console.log("✅ Loaded session cookies.");
     }
 
-    await page.goto('https://www.terabox.com/main?category=all', { waitUntil: 'networkidle2' });
+    await page.goto('https://www.terabox.com/main?category=all', {
+        waitUntil: 'networkidle2',
+        timeout: 60000 // Increased timeout
+    });
+
+    await page.waitForTimeout(5000); // Extra wait to avoid detection
     console.log("✅ Logged into TeraBox.");
 
     // Save cookies after login
