@@ -29,20 +29,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xdg-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Puppeteer (Chrome included)
-RUN npm install puppeteer
+# Install Google Chrome manually
+RUN wget -qO- https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor > /usr/share/keyrings/google-chrome-keyring.gpg \
+    && echo 'deb [signed-by=/usr/share/keyrings/google-chrome-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main' | tee /etc/apt/sources.list.d/google-chrome.list \
+    && apt-get update \
+    && apt-get install -y google-chrome-stable \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy package.json first (for better caching)
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install Puppeteer (Ensure Chromium is installed)
+RUN npm install puppeteer --omit=dev
 
 # Copy project files
 COPY . .
 
 # Expose the app port
 EXPOSE 3000
+
+# Set the Puppeteer executable path to use Google Chrome
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
 
 # Run Puppeteer without sandbox issues
 CMD ["node", "index.js"]
