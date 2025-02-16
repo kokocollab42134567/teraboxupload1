@@ -2,7 +2,6 @@ const puppeteer = require('puppeteer');
 const express = require('express');
 const multer = require('multer');
 const cors = require('cors');
-const { Server } = require('ws');
 const fs = require('fs');
 const path = require('path');
 
@@ -16,86 +15,46 @@ app.use(cors());
 // Use memory storage (No local file storage)
 const upload = multer({ storage: multer.memoryStorage() });
 
-// WebSocket Server for real-time updates
-const wss = new Server({ noServer: true });
-
-// Global Puppeteer variables
-let browser;
-let page;
-
-async function initPuppeteer() {
-    if (browser) return;
-
-    console.log("🚀 Launching Puppeteer...");
-    browser = await puppeteer.launch({
-        headless: true,
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH, // Use installed Chrome
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
-            '--disable-features=site-per-process',
-            '--disable-web-security'
-        ]
-    });
-
-    page = await browser.newPage();
-    await page.setViewport({ width: 1280, height: 800 });
-    await page.setUserAgent(
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
-    );
-
-    // Load cookies if available
-    if (fs.existsSync(COOKIES_PATH)) {
-        const cookies = JSON.parse(fs.readFileSync(COOKIES_PATH, 'utf8'));
-        await page.setCookie(...cookies);
-        console.log("✅ Loaded session cookies.");
-    }
-
-    console.log("🌍 Navigating to TeraBox...");
-    await page.goto('https://www.terabox.com/main?category=all', {
-        waitUntil: 'load',
-        timeout: 10000
-    }).catch(err => console.log("⚠️ Initial load failed, retrying..."));
-
-    console.log("✅ Page loaded successfully.");
-    await new Promise(resolve => setTimeout(resolve, 5000));
-    console.log("🛠 Logged into TeraBox.");
-
-    // Save cookies after login
-    const cookies = await page.cookies();
-    fs.writeFileSync(COOKIES_PATH, JSON.stringify(cookies, null, 2));
-}
-
 async function uploadToTeraBox(fileBuffer, fileName) {
     const MAX_RETRIES = 3;
     let attempt = 0;
     let requestId = Date.now(); // Unique ID for tracking each file upload
 
     while (attempt < MAX_RETRIES) {
+        let browser;
+        let uploadPage;
+
         try {
             console.log(`🔄 Attempt ${attempt + 1}/${MAX_RETRIES} for file: ${fileName} (Request ID: ${requestId})`);
 
-            if (!browser) {
-                console.log("⚠️ Browser is not initialized. Restarting...");
-                await initPuppeteer();
-            }
+            // Launch a new isolated browser instance
+            browser = await puppeteer.launch({
+                headless: false,
+                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH, // Use installed Chrome
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--disable-features=site-per-process',
+                    '--disable-web-security'
+                ]
+            });
 
-            // Open a new tab for this file upload
-            const uploadPage = await browser.newPage();
+            uploadPage = await browser.newPage();
             await uploadPage.setViewport({ width: 1280, height: 800 });
             await uploadPage.setUserAgent(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
             );
 
+            // Load cookies if available
             if (fs.existsSync(COOKIES_PATH)) {
                 const cookies = JSON.parse(fs.readFileSync(COOKIES_PATH, 'utf8'));
                 await uploadPage.setCookie(...cookies);
             }
 
             console.log("🌍 Navigating to TeraBox...");
-            await uploadPage.goto('https://www.terabox.com/main?category=all', { waitUntil: 'load', timeout: 15000 });
+            await uploadPage.goto('https://www.terabox.com/main?category=all', { waitUntil: 'load', timeout: 60000 });
 
             console.log("✅ Page loaded successfully.");
 
@@ -110,6 +69,8 @@ async function uploadToTeraBox(fileBuffer, fileName) {
             }, firstRowSelector);
 
             console.log("📌 Stored initial first row ID:", initialRowId);
+
+            console.log(`📤 Uploading file: ${fileName} (Request ID: ${requestId})`);
 
             // Convert buffer to base64
             const base64File = fileBuffer.toString('base64');
@@ -129,7 +90,7 @@ async function uploadToTeraBox(fileBuffer, fileName) {
                 input.dispatchEvent(new Event('change', { bubbles: true }));
             }, fileInputSelector, base64File, fileName);
 
-            console.log(`📤 Uploaded file: ${fileName} (Request ID: ${requestId})`);
+            console.log(`📤 File uploaded: ${fileName}`);
 
             // **Wait for upload to complete by detecting new row ID**
             console.log("⏳ Waiting for the upload to complete...");
@@ -182,31 +143,29 @@ async function uploadToTeraBox(fileBuffer, fileName) {
             // 🆕 **Step: Click on the row that matches the stored uploaded row ID**
             if (uploadedRowId) {
                 const uploadedCheckboxSelector = `tbody tr[data-id="${uploadedRowId}"] .wp-s-pan-table__body-row--checkbox-block.is-select`;
-                await uploadPage.waitForSelector(uploadedRowSelector, { visible: true });
-                await uploadPage.click(uploadedRowSelector);
+                await uploadPage.waitForSelector(uploadedCheckboxSelector, { visible: true });
+                await uploadPage.click(uploadedCheckboxSelector);
                 console.log(`✅ Clicked on the uploaded row (ID: ${uploadedRowId})`);
             } else {
                 console.log("⚠️ Could not find uploaded row ID. Skipping row click.");
             }
 
             await uploadPage.close();
-            console.log("❎ Closed the upload tab.");
+            await browser.close();
+            console.log("❎ Closed the browser.");
 
             return { success: true, link: shareLink };
         } catch (error) {
             console.error(`❌ Upload error on attempt ${attempt + 1}:`, error);
             attempt++;
+
+            if (uploadPage) await uploadPage.close();
+            if (browser) await browser.close();
         }
     }
 
     return { success: false, error: "Upload failed after multiple attempts." };
 }
-
-
-
-
-
-
 
 app.post('/upload', upload.single('file'), async (req, res) => {
     if (!req.file) {
@@ -214,18 +173,10 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     }
 
     console.log(`📥 Received file: ${req.file.originalname}`);
-    const ws = req.ws;
-    const result = await uploadToTeraBox(req.file.buffer, req.file.originalname, ws);
+    const result = await uploadToTeraBox(req.file.buffer, req.file.originalname);
     res.json(result);
 });
 
-const server = app.listen(port, async () => {
-    await initPuppeteer();
+const server = app.listen(port, () => {
     console.log(`🚀 Server running at http://localhost:${port}`);
-});
-
-server.on("upgrade", (request, socket, head) => {
-    wss.handleUpgrade(request, socket, head, (ws) => {
-        ws.on("message", (message) => console.log("💬 WebSocket message:", message));
-    });
 });
