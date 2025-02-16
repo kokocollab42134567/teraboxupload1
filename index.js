@@ -173,9 +173,23 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     }
 
     console.log(`📥 Received file: ${req.file.originalname}`);
-    const result = await uploadToTeraBox(req.file.buffer, req.file.originalname);
-    res.json(result);
+
+    try {
+        const result = await uploadToTeraBox(req.file.buffer, req.file.originalname);
+
+        if (!result.success) {
+            console.error("❌ Upload failed:", result.error);
+            return res.status(500).json({ success: false, message: result.error || "Upload failed." });
+        }
+
+        console.log("✅ Upload successful, sending JSON response...");
+        res.json(result);  // <-- Ensure this is sent properly
+    } catch (error) {
+        console.error("❌ Server error:", error);
+        res.status(500).json({ success: false, message: "Internal server error." });
+    }
 });
+
 
 const server = app.listen(port, () => {
     console.log(`🚀 Server running at http://localhost:${port}`);
