@@ -8,7 +8,7 @@ const path = require('path');
 
 const app = express();
 const port = process.env.PORT || 3000;
-const COOKIES_PATH = path.resolve(__dirnamea, 'terabox_cookies.json');
+const COOKIES_PATH = path.resolve(__dirname, 'terabox_cookies.json');
 
 // Enable CORS
 app.use(cors());
