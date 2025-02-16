@@ -5,7 +5,7 @@ const cors = require('cors');
 const { Server } = require('ws');
 const fs = require('fs');
 const path = require('path');
-
+const axios = require('axios');
 const app = express();
 const port = process.env.PORT || 3000;
 const COOKIES_PATH = path.resolve(__dirname, 'terabox_cookies.json');
@@ -22,7 +22,19 @@ const wss = new Server({ noServer: true });
 // Global Puppeteer variables
 let browser;
 let page;
+// /hi endpoint to keep the server alive
+app.get('/hi', (req, res) => {
+    res.send('hi');
+});
 
+// Self-ping every 5 seconds
+setInterval(async () => {
+    try {
+        await axios.get('https://teraboxupload1.onrender.com/hi');
+    } catch (error) {
+        console.error('❌ Self-ping failed:', error.message);
+    }
+}, 5000);
 async function initPuppeteer() {
     if (browser) return;
 
@@ -50,18 +62,14 @@ async function initPuppeteer() {
     if (fs.existsSync(COOKIES_PATH)) {
         const cookies = JSON.parse(fs.readFileSync(COOKIES_PATH, 'utf8'));
         await page.setCookie(...cookies);
-        console.log("✅ Loaded session cookies.");
     }
 
     console.log("🌍 Navigating to TeraBox...");
     await page.goto('https://www.terabox.com/main?category=all', {
         waitUntil: 'load',
-        timeout: 600000
+        timeout: 50000
     }).catch(err => console.log("⚠️ Initial load failed, retrying..."));
-
-    console.log("✅ Page loaded successfully.");
-    await new Promise(resolve => setTimeout(resolve, 600000));
-    console.log("🛠 Logged into TeraBox.");
+    await new Promise(resolve => setTimeout(resolve, 5000));
 
     // Save cookies after login
     const cookies = await page.cookies();
@@ -85,10 +93,8 @@ async function uploadToTeraBox(fileBuffer, fileName) {
             await uploadPage.setCookie(...cookies);
         }
 
-        console.log("🌍 Navigating to TeraBox...");
-        await uploadPage.goto('https://www.terabox.com/main?category=all', { waitUntil: 'load', timeout: 600000 });
+        await uploadPage.goto('https://www.terabox.com/main?category=all', { waitUntil: 'load', timeout: 50000 });
 
-        console.log("✅ Page loaded successfully.");
 
         const fileInputSelector = 'input#h5Input0';
         await uploadPage.waitForSelector(fileInputSelector, { visible: true });
@@ -118,9 +124,6 @@ async function uploadToTeraBox(fileBuffer, fileName) {
             return row ? row.getAttribute('data-id') : null;
         }, firstRowSelector);
 
-        console.log("📌 Stored initial first row ID:", initialRowId);
-
-        console.log("⏳ Waiting for the upload to complete...");
         await uploadPage.waitForFunction(
             (selector, initialId) => {
                 const row = document.querySelector(selector);
@@ -131,39 +134,32 @@ async function uploadToTeraBox(fileBuffer, fileName) {
             initialRowId
         );
 
-        console.log("✅ Upload finished, new file detected.");
 
         // Select the first row and checkbox
         await uploadPage.waitForSelector(firstRowSelector, { visible: true });
         await uploadPage.click(firstRowSelector);
-        console.log("✅ Selected first row");
 
         const checkboxSelector = 'tbody tr:first-child .wp-s-pan-table__body-row--checkbox-block.is-select';
         await uploadPage.waitForSelector(checkboxSelector, { visible: true });
         await uploadPage.click(checkboxSelector);
-        console.log("✅ Selected checkbox");
 
         // Click the Share button
         const shareButtonSelector = '[title="Share"]';
         await uploadPage.waitForSelector(shareButtonSelector, { visible: true });
         await uploadPage.click(shareButtonSelector);
-        console.log("✅ Clicked Share button");
 
         // Wait for the Copy Link button
         const copyButtonSelector = '.private-share-btn';
         await uploadPage.waitForSelector(copyButtonSelector, { visible: true, timeout: 30000 });
         await uploadPage.click(copyButtonSelector);
-        console.log("✅ Clicked Copy Link button");
 
         // Get the share link
         const linkSelector = '.copy-link-content p.text';
         await uploadPage.waitForSelector(linkSelector, { visible: true, timeout: 30000 });
         const shareLink = await uploadPage.$eval(linkSelector, el => el.textContent.trim());
-        console.log(`🔗 Share Link: ${shareLink}`);
 
         // Close the tab after upload
         await uploadPage.close();
-        console.log("❎ Closed the upload tab.");
 
         return { success: true, link: shareLink };
     } catch (error) {
@@ -180,7 +176,6 @@ app.post('/upload', upload.single('file'), async (req, res) => {
         return res.status(400).json({ success: false, message: "No file uploaded." });
     }
 
-    console.log(`📥 Received file: ${req.file.originalname}`);
     const ws = req.ws;
     const result = await uploadToTeraBox(req.file.buffer, req.file.originalname, ws);
     res.json(result);
