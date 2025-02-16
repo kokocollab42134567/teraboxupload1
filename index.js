@@ -26,8 +26,9 @@ let page;
 async function initPuppeteer() {
     if (browser) return;
 
+    console.log("🚀 Launching Puppeteer...");
     browser = await puppeteer.launch({
-        headless: true,
+        headless: false, // Use headless: false to see logs
         executablePath: process.env.CHROME_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable',
         args: [
             '--no-sandbox',
@@ -54,18 +55,30 @@ async function initPuppeteer() {
         console.log("✅ Loaded session cookies.");
     }
 
-    await page.goto('https://www.terabox.com/main?category=all', {
-        waitUntil: 'networkidle2',
-        timeout: 60000 // Increased timeout
+    console.log("🌍 Navigating to TeraBox...");
+    const response = await page.goto('https://www.terabox.com/main?category=all', {
+        waitUntil: 'load', // Load the page without waiting forever
+        timeout: 5000 // Stop loading after 5 seconds
+    }).catch(err => {
+        console.log("⚠️ First load failed, retrying...");
+        return null; // Allow retry
     });
 
+    if (!response) {
+        console.log("🔄 Reloading page...");
+        await page.reload({ waitUntil: 'networkidle2' });
+    }
+
+    console.log("✅ Page loaded successfully.");
+
     await page.waitForTimeout(5000); // Extra wait to avoid detection
-    console.log("✅ Logged into TeraBox.");
+    console.log("🛠 Logged into TeraBox.");
 
     // Save cookies after login
     const cookies = await page.cookies();
     fs.writeFileSync(COOKIES_PATH, JSON.stringify(cookies, null, 2));
 }
+
 
 // ** Upload File to TeraBox from Memory **
 async function uploadToTeraBox(fileBuffer, fileName, ws) {
