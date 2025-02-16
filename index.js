@@ -28,7 +28,8 @@ async function initPuppeteer() {
 
     console.log("🚀 Launching Puppeteer...");
     browser = await puppeteer.launch({
-        headless: true, // Use 'new' mode instead of false
+        headless: true,
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH, // Use installed Chrome
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -38,7 +39,6 @@ async function initPuppeteer() {
             '--disable-web-security'
         ]
     });
-    
 
     page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 800 });
