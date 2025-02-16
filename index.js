@@ -25,11 +25,13 @@ let browser;
 let page;
 
 async function initPuppeteer() {
-    const browser = await puppeteer.launch({
-    headless: true,
-    executablePath: process.env.CHROME_EXECUTABLE_PATH, // Use the chromium path set earlier
-});
-
+    if (browser) return; // Prevent multiple instances
+    
+    browser = await puppeteer.launch({
+        headless: true,
+        executablePath: process.env.CHROME_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable',
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
 
     page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 800 });
@@ -49,7 +51,6 @@ async function initPuppeteer() {
     fs.writeFileSync(COOKIES_PATH, JSON.stringify(cookies, null, 2));
 }
 
-
 // 🟢 Upload File to TeraBox
 async function uploadToTeraBox(fileBuffer, fileName, ws) {
     try {
@@ -58,56 +59,45 @@ async function uploadToTeraBox(fileBuffer, fileName, ws) {
             await initPuppeteer();
         }
 
-        if (ws && ws.readyState === ws.OPEN) ws.send(JSON.stringify({ progress: 10, status: "Starting Upload..." }));
+        if (ws?.readyState === ws.OPEN) ws.send(JSON.stringify({ progress: 10, status: "Starting Upload..." }));
 
         await page.reload({ waitUntil: 'networkidle2' });
-
-        // Close any popups
         await page.evaluate(() => document.body.click());
 
-        if (ws && ws.readyState === ws.OPEN) ws.send(JSON.stringify({ progress: 30, status: "Uploading File..." }));
+        if (ws?.readyState === ws.OPEN) ws.send(JSON.stringify({ progress: 30, status: "Uploading File..." }));
 
-        // Temporary save buffer to file (needed for Puppeteer)
         const tempFilePath = `/tmp/${fileName}`;
         fs.writeFileSync(tempFilePath, fileBuffer);
 
-        // File Upload Input
         const fileInputSelector = 'input#h5Input0';
         await page.waitForSelector(fileInputSelector, { visible: true });
-
-        const inputUploadHandle = await page.$(fileInputSelector);
-        await inputUploadHandle.uploadFile(tempFilePath);
+        await page.$(fileInputSelector).then(input => input.uploadFile(tempFilePath));
         console.log(`📤 Uploaded file: ${fileName}`);
 
-        // Wait for upload to complete
         await new Promise(r => setTimeout(r, 5000));
 
-        if (ws && ws.readyState === ws.OPEN) ws.send(JSON.stringify({ progress: 60, status: "Processing File..." }));
+        if (ws?.readyState === ws.OPEN) ws.send(JSON.stringify({ progress: 60, status: "Processing File..." }));
 
-        // Select first uploaded file
         const firstRowSelector = 'tbody tr:first-child';
         await page.waitForSelector(firstRowSelector, { visible: true });
         await page.click(firstRowSelector);
 
-        if (ws && ws.readyState === ws.OPEN) ws.send(JSON.stringify({ progress: 80, status: "Generating Link..." }));
+        if (ws?.readyState === ws.OPEN) ws.send(JSON.stringify({ progress: 80, status: "Generating Link..." }));
 
-        // Click "Share" button
         const shareButtonSelector = '[title="Share"]';
         await page.waitForSelector(shareButtonSelector, { visible: true });
         await page.click(shareButtonSelector);
 
-        // Click "Copy Link"
         const copyButtonSelector = '.private-share-btn';
         await page.waitForSelector(copyButtonSelector, { visible: true });
         await page.click(copyButtonSelector);
 
-        // Extract the link
         const linkSelector = '.copy-link-content p.text';
         const shareLink = await page.$eval(linkSelector, el => el.textContent.trim());
 
         console.log(`🔗 Share Link: ${shareLink}`);
 
-        if (ws && ws.readyState === ws.OPEN) ws.send(JSON.stringify({ progress: 100, status: "Upload Complete!", link: shareLink }));
+        if (ws?.readyState === ws.OPEN) ws.send(JSON.stringify({ progress: 100, status: "Upload Complete!", link: shareLink }));
 
         return { success: true, link: shareLink };
 
@@ -124,16 +114,14 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     }
 
     console.log(`📥 Received file: ${req.file.originalname}`);
-
     const ws = req.ws;
     const result = await uploadToTeraBox(req.file.buffer, req.file.originalname, ws);
-
     res.json(result);
 });
 
 // 🟢 Start Server
 const server = app.listen(port, async () => {
-    await initPuppeteer(); // Start Puppeteer when the server starts
+    await initPuppeteer();
     console.log(`🚀 Server running at http://localhost:${port}`);
 });
 
