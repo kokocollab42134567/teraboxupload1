@@ -4,6 +4,21 @@ const multer = require('multer');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const axios = require('axios');
+
+const SELF_CHECK_URL = "https://teraboxupload1-production.up.railway.app/hi";
+
+async function checkServerHealth() {
+    try {
+        const response = await axios.get(SELF_CHECK_URL);
+        console.log(`🔄 Self-check response: ${response.data}`);
+    } catch (error) {
+        console.error("❌ Self-check failed:", error.message);
+    }
+}
+
+// Run the health check every 10 seconds
+setInterval(checkServerHealth, 10000);
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -11,6 +26,10 @@ const COOKIES_PATH = path.resolve(__dirname, 'terabox_cookies.json');
 
 // Enable CORS
 app.use(cors());
+app.get('/hi', (req, res) => {
+    console.log("✅ /hi endpoint was accessed.");
+    res.send("hi");
+});
 
 // Use memory storage (No local file storage)
 const upload = multer({ storage: multer.memoryStorage() });
