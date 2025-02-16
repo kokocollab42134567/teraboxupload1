@@ -71,17 +71,18 @@ async function initPuppeteer() {
 async function uploadToTeraBox(fileBuffer, fileName) {
     const MAX_RETRIES = 3;
     let attempt = 0;
-    let requestId = Date.now(); // Unique ID for the request
+    let requestId = Date.now(); // Unique ID for tracking each file upload
 
     while (attempt < MAX_RETRIES) {
         try {
             console.log(`🔄 Attempt ${attempt + 1}/${MAX_RETRIES} for file: ${fileName} (Request ID: ${requestId})`);
 
-            if (!browser || !page || page.isClosed()) {
-                console.log("⚠️ Browser or page closed, restarting...");
+            if (!browser) {
+                console.log("⚠️ Browser is not initialized. Restarting...");
                 await initPuppeteer();
             }
 
+            // Open a new tab for this specific file upload
             const uploadPage = await browser.newPage();
             await uploadPage.setViewport({ width: 1280, height: 800 });
             await uploadPage.setUserAgent(
@@ -99,9 +100,30 @@ async function uploadToTeraBox(fileBuffer, fileName) {
             console.log("✅ Page loaded successfully.");
 
             const fileInputSelector = 'input#h5Input0';
-            await uploadPage.waitForSelector(fileInputSelector, { visible: true });
+            let uploadInputExists = false;
 
+            // Retry logic for waiting for the file input
+            for (let retry = 0; retry < 3; retry++) {
+                try {
+                    await uploadPage.waitForSelector(fileInputSelector, { visible: true, timeout: 20000 });
+                    uploadInputExists = true;
+                    break; // Exit loop if found
+                } catch (error) {
+                    console.log(`⚠️ File input not found, retrying... (${retry + 1}/3)`);
+                    await uploadPage.reload({ waitUntil: 'load' });
+                }
+            }
+
+            if (!uploadInputExists) {
+                console.log("❌ Upload input still not found after retries. Skipping file.");
+                await uploadPage.close();
+                return { success: false, error: "File upload input not found." };
+            }
+
+            // Convert buffer to base64
             const base64File = fileBuffer.toString('base64');
+
+            // Simulate file upload
             await uploadPage.evaluate((selector, fileBase64, fileName) => {
                 const input = document.querySelector(selector);
                 const data = atob(fileBase64);
@@ -118,54 +140,33 @@ async function uploadToTeraBox(fileBuffer, fileName) {
 
             console.log(`📤 Uploaded file: ${fileName} (Request ID: ${requestId})`);
 
-            const firstRowSelector = 'tbody tr:first-child';
-            let initialRowId = await uploadPage.evaluate((selector) => {
-                const row = document.querySelector(selector);
-                return row ? row.getAttribute('data-id') : null;
-            }, firstRowSelector);
-
-            console.log("📌 Stored initial row ID:", initialRowId);
-
+            // Wait for upload to complete
             console.log("⏳ Waiting for the upload to complete...");
-            try {
-                await uploadPage.waitForFunction(
-                    (selector, initialId) => {
-                        const row = document.querySelector(selector);
-                        return row && row.getAttribute('data-id') !== initialId;
-                    },
-                    { timeout: 60000, polling: 2000 },
-                    firstRowSelector,
-                    initialRowId
-                );
-            } catch (err) {
-                console.log("⚠️ Upload timeout, reloading page and retrying...");
-                await uploadPage.reload({ waitUntil: 'load' });
-                attempt++;
-                continue; // Retry the upload process
-            }
+            await uploadPage.waitForFunction(
+                () => {
+                    const uploadStatus = document.querySelector('.upload-status'); // Adjust selector if needed
+                    return uploadStatus && uploadStatus.textContent.includes('Completed');
+                },
+                { timeout: 60000, polling: 2000 }
+            );
 
-            console.log("✅ Upload finished, new file detected.");
+            console.log("✅ Upload finished.");
 
-            await uploadPage.waitForSelector(firstRowSelector, { visible: true });
-            await uploadPage.click(firstRowSelector);
-
-            const checkboxSelector = 'tbody tr:first-child .wp-s-pan-table__body-row--checkbox-block.is-select';
-            await uploadPage.waitForSelector(checkboxSelector, { visible: true });
-            await uploadPage.click(checkboxSelector);
-
+            // Share file and get the link
+            console.log("🔗 Generating share link...");
             const shareButtonSelector = '[title="Share"]';
             await uploadPage.waitForSelector(shareButtonSelector, { visible: true });
             await uploadPage.click(shareButtonSelector);
 
             const copyButtonSelector = '.private-share-btn';
-            await uploadPage.waitForSelector(copyButtonSelector, { visible: true, timeout: 30000 });
+            await uploadPage.waitForSelector(copyButtonSelector, { visible: true });
             await uploadPage.click(copyButtonSelector);
 
             const linkSelector = '.copy-link-content p.text';
-            await uploadPage.waitForSelector(linkSelector, { visible: true, timeout: 30000 });
+            await uploadPage.waitForSelector(linkSelector, { visible: true });
             const shareLink = await uploadPage.$eval(linkSelector, el => el.textContent.trim());
 
-            console.log(`🔗 Share Link: ${shareLink}`);
+            console.log(`✅ Share Link: ${shareLink}`);
 
             await uploadPage.close();
             console.log("❎ Closed the upload tab.");
