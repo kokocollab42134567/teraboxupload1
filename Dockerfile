@@ -1,8 +1,11 @@
-# Use lightweight Node.js image
+# Use a lightweight Node.js image
 FROM node:16-slim
 
+# Set working directory
+WORKDIR /usr/src/app
+
 # Install dependencies required for Chrome
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     curl \
     gnupg \
@@ -28,24 +31,23 @@ RUN apt-get update && apt-get install -y \
 # Install Google Chrome manually
 RUN wget -q -O google-chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
     && apt-get update \
-    && apt-get install -y ./google-chrome.deb \
+    && apt-get install -y --no-install-recommends ./google-chrome.deb \
     && rm google-chrome.deb
 
 # Set Puppeteer to use installed Chrome
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
 
-# Set working directory
-WORKDIR /usr/src/app
-
-# Copy package.json and install dependencies
+# Copy package.json first (better Docker caching)
 COPY package*.json ./
-RUN npm ci
+
+# Install dependencies
+RUN npm ci --only=production
 
 # Copy project files
 COPY . .
 
-# Expose port
+# Expose the app port
 EXPOSE 3000
 
-# Start application
+# Run Puppeteer without sandbox issues
 CMD ["node", "index.js"]
