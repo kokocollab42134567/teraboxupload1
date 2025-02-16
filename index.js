@@ -56,11 +56,11 @@ async function initPuppeteer() {
     console.log("🌍 Navigating to TeraBox...");
     await page.goto('https://www.terabox.com/main?category=all', {
         waitUntil: 'load',
-        timeout: 50000
+        timeout: 600000
     }).catch(err => console.log("⚠️ Initial load failed, retrying..."));
 
     console.log("✅ Page loaded successfully.");
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    await new Promise(resolve => setTimeout(resolve, 600000));
     console.log("🛠 Logged into TeraBox.");
 
     // Save cookies after login
@@ -86,7 +86,7 @@ async function uploadToTeraBox(fileBuffer, fileName) {
         }
 
         console.log("🌍 Navigating to TeraBox...");
-        await uploadPage.goto('https://www.terabox.com/main?category=all', { waitUntil: 'load', timeout: 50000 });
+        await uploadPage.goto('https://www.terabox.com/main?category=all', { waitUntil: 'load', timeout: 600000 });
 
         console.log("✅ Page loaded successfully.");
 
