@@ -32,7 +32,11 @@ app.get('/hi', (req, res) => {
 });
 
 // Use memory storage (No local file storage)
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 100 * 1024 * 1024 } // 100MB limit
+});
+
 
 async function uploadToTeraBox(fileBuffer, fileName) {
     const MAX_RETRIES = 3;
