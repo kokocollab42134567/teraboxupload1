@@ -217,3 +217,4 @@ app.post('/upload', upload.single('file'), async (req, res) => {
 const server = app.listen(port, () => {
     console.log(`🚀 Server running at http://localhost:${port}`);
 });
+server.timeout = 600000; // 10 minutes
