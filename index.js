@@ -29,7 +29,7 @@ async function uploadToTeraBox(fileBuffer, fileName) {
 
             // Launch a new isolated browser instance
             browser = await puppeteer.launch({
-                headless: false,
+                headless: true,
                 executablePath: process.env.PUPPETEER_EXECUTABLE_PATH, // Use installed Chrome
                 args: [
                     '--no-sandbox',
