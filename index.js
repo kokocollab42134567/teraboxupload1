@@ -82,7 +82,7 @@ async function uploadToTeraBox(fileBuffer, fileName) {
                 await initPuppeteer();
             }
 
-            // Open a new tab for this specific file upload
+            // Open a new tab for this file upload
             const uploadPage = await browser.newPage();
             await uploadPage.setViewport({ width: 1280, height: 800 });
             await uploadPage.setUserAgent(
@@ -100,25 +100,16 @@ async function uploadToTeraBox(fileBuffer, fileName) {
             console.log("✅ Page loaded successfully.");
 
             const fileInputSelector = 'input#h5Input0';
-            let uploadInputExists = false;
+            await uploadPage.waitForSelector(fileInputSelector, { visible: true, timeout: 20000 });
 
-            // Retry logic for waiting for the file input
-            for (let retry = 0; retry < 3; retry++) {
-                try {
-                    await uploadPage.waitForSelector(fileInputSelector, { visible: true, timeout: 20000 });
-                    uploadInputExists = true;
-                    break; // Exit loop if found
-                } catch (error) {
-                    console.log(`⚠️ File input not found, retrying... (${retry + 1}/3)`);
-                    await uploadPage.reload({ waitUntil: 'load' });
-                }
-            }
+            // **Store the initial first row ID**
+            const firstRowSelector = 'tbody tr:first-child';
+            let initialRowId = await uploadPage.evaluate((selector) => {
+                const row = document.querySelector(selector);
+                return row ? row.getAttribute('data-id') : null;
+            }, firstRowSelector);
 
-            if (!uploadInputExists) {
-                console.log("❌ Upload input still not found after retries. Skipping file.");
-                await uploadPage.close();
-                return { success: false, error: "File upload input not found." };
-            }
+            console.log("📌 Stored initial first row ID:", initialRowId);
 
             // Convert buffer to base64
             const base64File = fileBuffer.toString('base64');
@@ -140,19 +131,39 @@ async function uploadToTeraBox(fileBuffer, fileName) {
 
             console.log(`📤 Uploaded file: ${fileName} (Request ID: ${requestId})`);
 
-            // Wait for upload to complete
+            // **Wait for upload to complete by detecting new row ID**
             console.log("⏳ Waiting for the upload to complete...");
             await uploadPage.waitForFunction(
-                () => {
-                    const uploadStatus = document.querySelector('.upload-status'); // Adjust selector if needed
-                    return uploadStatus && uploadStatus.textContent.includes('Completed');
+                (selector, initialId) => {
+                    const row = document.querySelector(selector);
+                    return row && row.getAttribute('data-id') !== initialId;
                 },
-                { timeout: 60000, polling: 2000 }
+                { timeout: 600000 }, // Wait up to 10 minutes
+                firstRowSelector,
+                initialRowId
             );
 
-            console.log("✅ Upload finished.");
+            console.log("✅ Upload finished, new file detected.");
 
-            // Share file and get the link
+            // **Store the ID of the new uploaded file's row**
+            let uploadedRowId = await uploadPage.evaluate((selector) => {
+                const row = document.querySelector(selector);
+                return row ? row.getAttribute('data-id') : null;
+            }, firstRowSelector);
+
+            console.log("📌 Stored uploaded row ID:", uploadedRowId);
+
+            // **Select the first row and its checkbox**
+            await uploadPage.waitForSelector(firstRowSelector, { visible: true });
+            await uploadPage.click(firstRowSelector);
+            console.log("✅ Selected first row");
+
+            const checkboxSelector = 'tbody tr:first-child .wp-s-pan-table__body-row--checkbox-block.is-select';
+            await uploadPage.waitForSelector(checkboxSelector, { visible: true });
+            await uploadPage.click(checkboxSelector);
+            console.log("✅ Selected checkbox");
+
+            // **Share file and get the link**
             console.log("🔗 Generating share link...");
             const shareButtonSelector = '[title="Share"]';
             await uploadPage.waitForSelector(shareButtonSelector, { visible: true });
@@ -168,6 +179,16 @@ async function uploadToTeraBox(fileBuffer, fileName) {
 
             console.log(`✅ Share Link: ${shareLink}`);
 
+            // 🆕 **Step: Click on the row that matches the stored uploaded row ID**
+            if (uploadedRowId) {
+                const uploadedCheckboxSelector = `tbody tr[data-id="${uploadedRowId}"] .wp-s-pan-table__body-row--checkbox-block.is-select`;
+                await uploadPage.waitForSelector(uploadedRowSelector, { visible: true });
+                await uploadPage.click(uploadedRowSelector);
+                console.log(`✅ Clicked on the uploaded row (ID: ${uploadedRowId})`);
+            } else {
+                console.log("⚠️ Could not find uploaded row ID. Skipping row click.");
+            }
+
             await uploadPage.close();
             console.log("❎ Closed the upload tab.");
 
@@ -180,6 +201,7 @@ async function uploadToTeraBox(fileBuffer, fileName) {
 
     return { success: false, error: "Upload failed after multiple attempts." };
 }
+
 
 
 
