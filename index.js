@@ -5,7 +5,7 @@ const cors = require('cors');
 const { Server } = require('ws');
 const fs = require('fs');
 const path = require('path');
-const axios = require('axios');
+
 const app = express();
 const port = process.env.PORT || 3000;
 const COOKIES_PATH = path.resolve(__dirname, 'terabox_cookies.json');
@@ -22,19 +22,7 @@ const wss = new Server({ noServer: true });
 // Global Puppeteer variables
 let browser;
 let page;
-// /hi endpoint to keep the server alive
-app.get('/hi', (req, res) => {
-    res.send('hi');
-});
 
-// Self-ping every 5 seconds
-setInterval(async () => {
-    try {
-        await axios.get('https://teraboxupload1.onrender.com/hi');
-    } catch (error) {
-        console.error('❌ Self-ping failed:', error.message);
-    }
-}, 5000);
 async function initPuppeteer() {
     if (browser) return;
 
@@ -68,7 +56,7 @@ async function initPuppeteer() {
     console.log("🌍 Navigating to TeraBox...");
     await page.goto('https://www.terabox.com/main?category=all', {
         waitUntil: 'load',
-        timeout: 50000
+        timeout: 10000
     }).catch(err => console.log("⚠️ Initial load failed, retrying..."));
 
     console.log("✅ Page loaded successfully.");
@@ -98,7 +86,7 @@ async function uploadToTeraBox(fileBuffer, fileName) {
         }
 
         console.log("🌍 Navigating to TeraBox...");
-        await uploadPage.goto('https://www.terabox.com/main?category=all', { waitUntil: 'load', timeout: 50000 });
+        await uploadPage.goto('https://www.terabox.com/main?category=all', { waitUntil: 'load', timeout: 10000 });
 
         console.log("✅ Page loaded successfully.");
 
