@@ -53,6 +53,7 @@ async function uploadToTeraBox(fileBuffer, fileName) {
             // Launch a new isolated browser instance
             browser = await puppeteer.launch({
                 headless: true,
+                protocolTimeout: 120000,  // <-- Increase Puppeteer protocol timeout
                 executablePath: process.env.PUPPETEER_EXECUTABLE_PATH, // Use installed Chrome
                 args: [
                     '--no-sandbox',
