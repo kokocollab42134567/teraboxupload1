@@ -8,7 +8,7 @@ const path = require('path');
 
 const app = express();
 const port = process.env.PORT || 3000;
-const COOKIES_PATH = path.resolve(__dirname, 'terabox_cookies.json');
+const COOKIES_PATH = path.resolve(__dirnamea, 'terabox_cookies.json');
 
 // Enable CORS
 app.use(cors());
@@ -28,7 +28,7 @@ async function initPuppeteer() {
 
     console.log("🚀 Launching Puppeteer...");
     browser = await puppeteer.launch({
-        headless: false, // Use headless: false to see logs
+        headless: true, // Use headless: false to see logs
         executablePath: process.env.CHROME_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable',
         args: [
             '--no-sandbox',
