@@ -1,5 +1,5 @@
 # Use a lightweight Node.js image
-FROM node:16-slim
+FROM node:20-slim
 
 # Set working directory
 WORKDIR /usr/src/app
@@ -25,19 +25,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxcomposite1 \
     libxdamage1 \
     libxrandr2 \
+    libgbm1 \
     xdg-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Google Chrome manually
-RUN wget -q -O google-chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends ./google-chrome.deb \
-    && rm google-chrome.deb
+# Install Puppeteer (Chrome included)
+RUN npm install puppeteer
 
-# Set Puppeteer to use installed Chrome
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
-
-# Copy package.json first (better Docker caching)
+# Copy package.json first (for better caching)
 COPY package*.json ./
 
 # Install dependencies
