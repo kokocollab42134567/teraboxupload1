@@ -68,7 +68,7 @@ async function uploadToTeraBox(filePath, fileName) {
 
             // Launch a new isolated browser instance
             browser = await puppeteer.launch({
-                headless: true,
+                headless: false,
                 protocolTimeout: 120000,  // <-- Increase Puppeteer protocol timeout
                 executablePath: process.env.PUPPETEER_EXECUTABLE_PATH, // Use installed Chrome
                 args: [
@@ -104,7 +104,7 @@ async function uploadToTeraBox(filePath, fileName) {
             const fileInputSelector = 'input#h5Input0';
             await uploadPage.waitForSelector(fileInputSelector, { visible: true, timeout: 20000 });
 
-            // **Store the initial first row ID**
+// **Store the initial first row ID**
             const firstRowSelector = 'tbody tr:first-child';
             let initialRowId = await uploadPage.evaluate((selector) => {
                 const row = document.querySelector(selector);
@@ -115,13 +115,46 @@ async function uploadToTeraBox(filePath, fileName) {
 
             console.log(`📤 Uploading file: ${fileName} (Request ID: ${requestId})`);
 
-            
-
             const inputUploadHandle = await uploadPage.$(fileInputSelector);
             await inputUploadHandle.uploadFile(filePath);
             console.log(`📤 File selected for upload: ${filePath}`);
 
-            // **Wait for upload to complete by detecting new row ID**
+// **Track Upload Progress Dynamically**
+            console.log("⏳ Tracking upload progress...");
+            await uploadPage.waitForSelector('#uploaderList .status-uploading.file-list', { visible: true });
+
+            await new Promise(async (resolve) => {
+                const progressSelector = '#uploaderList .status-uploading.file-list .progress-now.progress-common';
+                let lastProgress = "";
+
+                const checkProgress = async () => {
+                    try {
+                        const progress = await uploadPage.evaluate((selector) => {
+                            const progressElement = document.querySelector(selector);
+                            return progressElement ? progressElement.style.width : null;
+                        }, progressSelector);
+
+                        if (progress && progress !== lastProgress) {
+                            console.log(`📊 Upload Progress: ${progress}`);
+                            lastProgress = progress;
+                        }
+
+                        if (progress === "100%") {
+                            console.log("✅ Upload completed!");
+                            resolve(); // Finish waiting once upload reaches 100%
+                        } else {
+                            setTimeout(checkProgress, 1000); // Check progress every second
+                        }
+                    } catch (error) {
+                        console.log("⚠️ Error tracking progress, but upload is still ongoing...");
+                        setTimeout(checkProgress, 1000);
+                    }
+                };
+
+                checkProgress();
+            });
+
+// **Wait for upload to complete by detecting new row ID**
             console.log("⏳ Waiting for the upload to complete...");
             await uploadPage.waitForFunction(
                 (selector, initialId) => {
@@ -132,40 +165,10 @@ async function uploadToTeraBox(filePath, fileName) {
                 firstRowSelector,
                 initialRowId
             );
-            let progressData = await uploadPage.evaluate(() => {
-                
-                let lastFile = document.querySelector('.status-uploading.file-list:last-child');
-                if (!lastFile) return null;
-
-                let infoDiv = lastFile.querySelector('.info');
-                if (!infoDiv) return null;
-
-                let fileNameDiv = infoDiv.querySelector('.file-name');
-               if (!fileNameDiv) return null;
-
-               let fileProgressDiv = fileNameDiv.querySelector('.file-progress');
-               if (!fileProgressDiv) return null;
-
-               let progressBar = fileProgressDiv.querySelector('.progress-now.progress-common');
-               if (!progressBar) return null;
-
-               let fileName = fileNameDiv.textContent.trim();
-               let fileProgress = fileProgressDiv.textContent.trim();
-               let progressWidth = progressBar.style.width;
-
-               return { fileName, fileProgress, progressWidth };
-           });
-
-           if (progressData) {
-               console.log(`📂 ${progressData.fileName} - ${progressData.fileProgress} (${progressData.progressWidth})`);
-           } else {
-               console.log("⚠️ Upload progress not detected, continuing...");
-           }
-
 
             console.log("✅ Upload finished, new file detected.");
 
-            // **Store the ID of the new uploaded file's row**
+// **Store the ID of the new uploaded file's row**
             let uploadedRowId = await uploadPage.evaluate((selector) => {
                 const row = document.querySelector(selector);
                 return row ? row.getAttribute('data-id') : null;
@@ -173,7 +176,7 @@ async function uploadToTeraBox(filePath, fileName) {
 
             console.log("📌 Stored uploaded row ID:", uploadedRowId);
 
-            // **Select the first row and its checkbox**
+// **Select the first row and its checkbox**
             await uploadPage.waitForSelector(firstRowSelector, { visible: true });
             await uploadPage.click(firstRowSelector);
             console.log("✅ Selected first row");
@@ -182,6 +185,7 @@ async function uploadToTeraBox(filePath, fileName) {
             await uploadPage.waitForSelector(checkboxSelector, { visible: true });
             await uploadPage.click(checkboxSelector);
             console.log("✅ Selected checkbox");
+
 
             // **Share file and get the link**
             console.log("🔗 Generating share link...");
