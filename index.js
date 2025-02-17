@@ -43,12 +43,18 @@ app.get('/hi', (req, res) => {
 
 // Use memory storage (No local file storage)
 const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: 100 * 1024 * 1024 } // 100MB limit
+    storage: multer.diskStorage({
+        destination: '/tmp/',  // ✅ Use Railway's temporary storage
+        filename: (req, file, cb) => {
+            cb(null, Date.now() + '-' + file.originalname);
+        }
+    }),
+    limits: { fileSize: 500 * 1024 * 1024 } // Increase limit if needed
 });
 
 
-async function uploadToTeraBox(fileBuffer, fileName) {
+
+async function uploadToTeraBox(filePath, fileName) {
     const MAX_RETRIES = 3;
     let attempt = 0;
     let requestId = Date.now(); // Unique ID for tracking each file upload
@@ -62,8 +68,8 @@ async function uploadToTeraBox(fileBuffer, fileName) {
 
             // Launch a new isolated browser instance
             browser = await puppeteer.launch({
-                headless: true,
-                protocolTimeout: 1200000,  // <-- Increase Puppeteer protocol timeout
+                headless: false,
+                protocolTimeout: 120000,  // <-- Increase Puppeteer protocol timeout
                 executablePath: process.env.PUPPETEER_EXECUTABLE_PATH, // Use installed Chrome
                 args: [
                     '--no-sandbox',
@@ -109,25 +115,11 @@ async function uploadToTeraBox(fileBuffer, fileName) {
 
             console.log(`📤 Uploading file: ${fileName} (Request ID: ${requestId})`);
 
-            // Convert buffer to base64
-            const base64File = fileBuffer.toString('base64');
+            
 
-            // Simulate file upload
-            await uploadPage.evaluate((selector, fileBase64, fileName) => {
-                const input = document.querySelector(selector);
-                const data = atob(fileBase64);
-                const array = new Uint8Array(data.length);
-                for (let i = 0; i < data.length; i++) {
-                    array[i] = data.charCodeAt(i);
-                }
-                const file = new File([array], fileName, { type: "application/octet-stream" });
-                const dt = new DataTransfer();
-                dt.items.add(file);
-                input.files = dt.files;
-                input.dispatchEvent(new Event('change', { bubbles: true }));
-            }, fileInputSelector, base64File, fileName);
-
-            console.log(`📤 File uploaded: ${fileName}`);
+            const inputUploadHandle = await uploadPage.$(fileInputSelector);
+            await inputUploadHandle.uploadFile(filePath);
+            console.log(`📤 File selected for upload: ${filePath}`);
 
             // **Wait for upload to complete by detecting new row ID**
             console.log("⏳ Waiting for the upload to complete...");
@@ -190,6 +182,8 @@ async function uploadToTeraBox(fileBuffer, fileName) {
             await uploadPage.close();
             await browser.close();
             console.log("❎ Closed the browser.");
+            fs.unlinkSync(filePath); 
+            console.log(`🗑️ Deleted temporary file: ${filePath}`);
 
             return { success: true, link: shareLink };
         } catch (error) {
@@ -212,7 +206,7 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     console.log(`📥 Received file: ${req.file.originalname}`);
 
     try {
-        const result = await uploadToTeraBox(req.file.buffer, req.file.originalname);
+        const result = await uploadToTeraBox(req.file.path, req.file.originalname);
 
         if (!result.success) {
             console.error("❌ Upload failed:", result.error);
