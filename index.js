@@ -132,6 +132,36 @@ async function uploadToTeraBox(filePath, fileName) {
                 firstRowSelector,
                 initialRowId
             );
+            let progressData = await uploadPage.evaluate(() => {
+                
+                let lastFile = document.querySelector('.status-uploading.file-list:last-child');
+                if (!lastFile) return null;
+
+                let infoDiv = lastFile.querySelector('.info');
+                if (!infoDiv) return null;
+
+                let fileNameDiv = infoDiv.querySelector('.file-name');
+               if (!fileNameDiv) return null;
+
+               let fileProgressDiv = fileNameDiv.querySelector('.file-progress');
+               if (!fileProgressDiv) return null;
+
+               let progressBar = fileProgressDiv.querySelector('.progress-now.progress-common');
+               if (!progressBar) return null;
+
+               let fileName = fileNameDiv.textContent.trim();
+               let fileProgress = fileProgressDiv.textContent.trim();
+               let progressWidth = progressBar.style.width;
+
+               return { fileName, fileProgress, progressWidth };
+           });
+
+           if (progressData) {
+               console.log(`📂 ${progressData.fileName} - ${progressData.fileProgress} (${progressData.progressWidth})`);
+           } else {
+               console.log("⚠️ Upload progress not detected, continuing...");
+           }
+
 
             console.log("✅ Upload finished, new file detected.");
 
