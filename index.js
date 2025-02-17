@@ -23,6 +23,16 @@ setInterval(checkServerHealth, 10000);
 const app = express();
 const port = process.env.PORT || 3000;
 const COOKIES_PATH = path.resolve(__dirname, 'terabox_cookies.json');
+app.use((req, res, next) => {
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Access-Control-Allow-Origin", "*"); // Allow CORS for debugging
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    next();
+});
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 // Enable CORS
 app.use(cors());
@@ -61,7 +71,10 @@ async function uploadToTeraBox(fileBuffer, fileName) {
                     '--disable-dev-shm-usage',
                     '--disable-gpu',
                     '--disable-features=site-per-process',
-                    '--disable-web-security'
+                    '--disable-web-security',
+                    '--disable-http2',  // Disable HTTP/2
+                    '--proxy-server="direct://"',
+                    '--proxy-bypass-list=*'
                 ]
             });
 
@@ -219,3 +232,5 @@ const server = app.listen(port, () => {
     console.log(`🚀 Server running at http://localhost:${port}`);
 });
 server.timeout = 600000; // 10 minutes
+server.headersTimeout = 650000; // Increase header timeout
+
