@@ -259,7 +259,10 @@ console.log("✅ Upload finished.");
 app.post('/upload', (req, res) => {
     let receivedBytes = 0;
     let loggedMB = 0;
-    const filePath = path.join(uploadDir, `${Date.now()}-${req.headers['filename'] || 'uploaded_file'}`);
+    const originalFilename = req.headers['filename'] || 'uploaded_file';
+    const fileExtension = path.extname(originalFilename) || ''; // Get file extension
+    const filePath = path.join(uploadDir, `${Date.now()}-${originalFilename}${fileExtension}`);
+
     const writeStream = fs.createWriteStream(filePath);
 
     console.log("📥 Upload started...");
