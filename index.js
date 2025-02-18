@@ -129,7 +129,7 @@ async function uploadToTeraBox(filePath, fileName) {
             } catch (error) {
                 console.log("⚠️ Upload progress bar not found, checking upload list structure...");
                 const uploadListHTML = await uploadPage.evaluate(() => {
-                    const uploadList = document.querySelector('#uploaderList');
+                    const uploadList = document.querySelector('.dialog-body');
                     return uploadList ? uploadList.innerHTML : "No upload list found.";
                 });
                 console.log("📌 Upload List Structure:", uploadListHTML);
