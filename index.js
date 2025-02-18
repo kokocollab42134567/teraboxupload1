@@ -309,6 +309,10 @@ app.post('/upload', (req, res) => {
 const server = app.listen(port, () => {
     console.log(`🚀 Server running at http://localhost:${port}`);
 });
-server.timeout = 600000; // 10 minutes
-server.headersTimeout = 650000; // Increase header timeout
+
+// Extend timeouts to handle slow networks
+server.timeout = 15 * 60 * 1000; // 15 minutes
+server.headersTimeout = 16 * 60 * 1000; // 16 minutes
+server.keepAliveTimeout = 5 * 60 * 1000; // 5 minutes
+
 
