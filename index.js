@@ -66,9 +66,8 @@ async function uploadToTeraBox(filePath, fileName) {
     let requestId = Date.now(); // Unique ID for tracking each file upload
 
     while (attempt < MAX_RETRIES) {
-                let browser = null;
-        let uploadPage = null;
-
+        let browser;
+        let uploadPage;
 
         try {
             console.log(`🔄 Attempt ${attempt + 1}/${MAX_RETRIES} for file: ${fileName} (Request ID: ${requestId})`);
@@ -100,11 +99,6 @@ async function uploadToTeraBox(filePath, fileName) {
             });
 
             uploadPage = await browser.newPage();
-            await uploadPage.evaluate((requestId) => {
-    localStorage.setItem('session_id', requestId);
-}, requestId);
-console.log(`🆔 Set unique session ID in local storage: ${requestId}`);
-
             await uploadPage.setViewport({ width: 1280, height: 800 });
             await uploadPage.setUserAgent(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
@@ -257,35 +251,21 @@ console.log("✅ Upload finished.");
             } else {
                 console.log("⚠️ Could not find uploaded row ID. Skipping row click.");
             }
-            await uploadPage.evaluate(() => {
-    localStorage.removeItem('session_id');
-});
-console.log(`🗑️ Cleared session ID from local storage.`);
-
 
             await uploadPage.close();
             await browser.close();
             console.log("❎ Closed the browser.");
             fs.unlinkSync(filePath); 
             console.log(`🗑️ Deleted temporary file: ${filePath}`);
-            
 
             return { success: true, link: shareLink };
-                } catch (error) {
-    console.error(`❌ Upload error on attempt ${attempt + 1} (ID: ${requestId}):`, error);
-    attempt++;
+        } catch (error) {
+            console.error(`❌ Upload error on attempt ${attempt + 1}:`, error);
+            attempt++;
 
-    if (uploadPage) await uploadPage.close();
-    if (browser) {
-        await uploadPage.evaluate(() => {
-    localStorage.removeItem('session_id');
-});
-console.log(`🗑️ Cleared session ID from local storage due to error.`);
-
-        await browser.close();
-        console.log(`❎ Forced browser closure due to error (ID: ${requestId}).`);
-    }
-
+            if (uploadPage) await uploadPage.close();
+            if (browser) await browser.close();
+        }
     }
 
     return { success: false, error: "Upload failed after multiple attempts." };
@@ -349,5 +329,3 @@ const server = app.listen(port, () => {
 server.timeout = 150 * 60 * 1000; // 15 minutes
 server.headersTimeout = 160 * 60 * 1000; // 16 minutes
 server.keepAliveTimeout = 50 * 60 * 1000; // 5 minutes
-
-
