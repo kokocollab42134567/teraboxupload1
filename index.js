@@ -66,8 +66,9 @@ async function uploadToTeraBox(filePath, fileName) {
     let requestId = Date.now(); // Unique ID for tracking each file upload
 
     while (attempt < MAX_RETRIES) {
-        let browser;
-        let uploadPage;
+                let browser = null;
+        let uploadPage = null;
+
 
         try {
             console.log(`🔄 Attempt ${attempt + 1}/${MAX_RETRIES} for file: ${fileName} (Request ID: ${requestId})`);
@@ -259,13 +260,24 @@ console.log("✅ Upload finished.");
             console.log(`🗑️ Deleted temporary file: ${filePath}`);
 
             return { success: true, link: shareLink };
-        } catch (error) {
+                } catch (error) {
             console.error(`❌ Upload error on attempt ${attempt + 1}:`, error);
-            attempt++;
 
-            if (uploadPage) await uploadPage.close();
-            if (browser) await browser.close();
+            if (browser) {
+                await browser.close();
+                console.log("❎ Force closed the browser due to an error.");
+            }
+
+            // If this is the first error, force restart
+            if (attempt === 0) {
+                console.log("🔄 First error detected! Restarting with a fresh browser instance...");
+                attempt = 1; // Skip to the next attempt
+                continue; // Restart loop
+            }
+
+            attempt++;
         }
+
     }
 
     return { success: false, error: "Upload failed after multiple attempts." };
