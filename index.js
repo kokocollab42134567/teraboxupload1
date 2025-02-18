@@ -119,11 +119,24 @@ async function uploadToTeraBox(filePath, fileName) {
             console.log(`📤 File selected for upload: ${filePath}`);
 
 // **Track Upload Progress Dynamically**
-            console.log("⏳ Tracking upload progress...");
-            await uploadPage.waitForSelector('#uploaderList .status-uploading.file-list', { visible: true });
+            // **Wait for upload progress or log upload list structure**
+            console.log("⏳ Checking for upload progress...");
+            const progressSelector = '#uploaderList .status-uploading.file-list .progress-now.progress-common';
 
+            try {
+                await uploadPage.waitForSelector(progressSelector, { visible: true, timeout: 10000 });
+                console.log("📊 Upload progress detected.");
+            } catch (error) {
+                console.log("⚠️ Upload progress bar not found, checking upload list structure...");
+                const uploadListHTML = await uploadPage.evaluate(() => {
+                    const uploadList = document.querySelector('#uploaderList');
+                    return uploadList ? uploadList.innerHTML : "No upload list found.";
+                });
+                console.log("📌 Upload List Structure:", uploadListHTML);
+            }
+
+            // **Track Upload Progress Dynamically**
             await new Promise(async (resolve) => {
-                const progressSelector = '#uploaderList .status-uploading.file-list .progress-now.progress-common';
                 let lastProgress = "";
 
                 const checkProgress = async () => {
@@ -140,9 +153,9 @@ async function uploadToTeraBox(filePath, fileName) {
 
                         if (progress === "100%") {
                             console.log("✅ Upload completed!");
-                            resolve(); // Finish waiting once upload reaches 100%
+                            resolve();
                         } else {
-                            setTimeout(checkProgress, 1000); // Check progress every second
+                            setTimeout(checkProgress, 1000);
                         }
                     } catch (error) {
                         console.log("⚠️ Error tracking progress, but upload is still ongoing...");
@@ -152,6 +165,8 @@ async function uploadToTeraBox(filePath, fileName) {
 
                 checkProgress();
             });
+
+            console.log("✅ Upload finished.");
 
 // **Wait for upload to complete by detecting new row ID**
             console.log("⏳ Waiting for the upload to complete...");
