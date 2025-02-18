@@ -274,19 +274,9 @@ console.log("✅ Upload finished.");
 app.post('/upload', (req, res) => {
     let receivedBytes = 0;
     let loggedMB = 0;
-
-    const originalFilename = decodeURIComponent(req.headers['filename'] || 'uploaded_file');
-    const posterFilename =  decodeURIComponent(req.headers['postername'] || 'poster_file');
-    
-    const fileExtension = path.extname(originalFilename); // Extract extension
-    const posterExtension = path.extname(posterFilename); // Extract extension
-    const fileBaseName = path.basename(originalFilename, fileExtension); // Extract base name
-    const posterBaseName = path.basename(posterFilename, posterExtension); // Extract base name
-
-    const filePath = path.join(uploadDir, `${Date.now()}-${fileBaseName}${fileExtension}`);
-
-    console.log(`📂 Received file: ${originalFilename} (${fileExtension})`);
-    console.log(`🖼️ Poster file: ${posterFilename} (${posterExtension})`);
+    const originalFilename = req.headers['filename'] || 'uploaded_file';
+    const fileExtension = path.extname(originalFilename) || ''; // Get file extension
+    const filePath = path.join(uploadDir, `${Date.now()}-${originalFilename}${fileExtension}`);
 
     const writeStream = fs.createWriteStream(filePath);
 
@@ -296,6 +286,7 @@ app.post('/upload', (req, res) => {
         receivedBytes += chunk.length;
         writeStream.write(chunk);
 
+        // Log every 1MB received
         const receivedMB = Math.floor(receivedBytes / (1024 * 1024));
         if (receivedMB > loggedMB) {
             loggedMB = receivedMB;
@@ -308,7 +299,7 @@ app.post('/upload', (req, res) => {
         console.log(`✅ Upload complete. Total size: ${(receivedBytes / (1024 * 1024)).toFixed(2)}MB`);
 
         try {
-            const result = await uploadToTeraBox(filePath, originalFilename);
+            const result = await uploadToTeraBox(filePath, req.headers['filename'] || 'uploaded_file');
 
             if (!result.success) {
                 console.error("❌ Upload failed:", result.error);
