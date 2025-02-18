@@ -260,8 +260,10 @@ app.post('/upload', (req, res) => {
     let receivedBytes = 0;
     let loggedMB = 0;
     const originalFilename = req.headers['filename'] || 'uploaded_file';
-    const fileExtension = path.extname(originalFilename) || ''; // Get file extension
-    const filePath = path.join(uploadDir, `${Date.now()}-${originalFilename}${fileExtension}`);
+const fileExtension = path.extname(originalFilename); // Extract extension
+const fileBaseName = path.basename(originalFilename, fileExtension); // Extract base name
+const filePath = path.join(uploadDir, `${Date.now()}-${fileBaseName}${fileExtension}`);
+
 
     const writeStream = fs.createWriteStream(filePath);
 
