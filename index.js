@@ -6,19 +6,8 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 
-const SELF_CHECK_URL = "https://teraboxupload1-production.up.railway.app/hi";
 
-async function checkServerHealth() {
-    try {
-        const response = await axios.get(SELF_CHECK_URL);
-        console.log(`🔄 Self-check response: ${response.data}`);
-    } catch (error) {
-        console.error("❌ Self-check failed:", error.message);
-    }
-}
 
-// Run the health check every 10 seconds
-setInterval(checkServerHealth, 10000);
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -36,22 +25,24 @@ app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 // Enable CORS
 app.use(cors());
-app.get('/hi', (req, res) => {
-    console.log("✅ /hi endpoint was accessed.");
-    res.send("hi");
-});
 
-// Use memory storage (No local file storage)
+// Ensure the uploads directory exists
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
+
 const upload = multer({
     storage: multer.diskStorage({
-        destination: '/tmp/',  // ✅ Use Railway's temporary storage
+        destination: (req, file, cb) => {
+            cb(null, uploadDir);  // ✅ Store files in 'uploads/' folder
+        },
         filename: (req, file, cb) => {
-            cb(null, Date.now() + '-' + file.originalname);
+            cb(null, Date.now() + '-' + file.originalname); // Unique filename
         }
     }),
     limits: { fileSize: 500 * 1024 * 1024 } // Increase limit if needed
 });
-
 
 
 async function uploadToTeraBox(filePath, fileName) {
@@ -67,21 +58,29 @@ async function uploadToTeraBox(filePath, fileName) {
             console.log(`🔄 Attempt ${attempt + 1}/${MAX_RETRIES} for file: ${fileName} (Request ID: ${requestId})`);
 
             // Launch a new isolated browser instance
-            browser = await puppeteer.launch({
-                headless: true,
-                protocolTimeout: 120000,  // <-- Increase Puppeteer protocol timeout
-                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH, // Use installed Chrome
+            const browser = await puppeteer.launch({
+                headless: 'new',  // Use 'new' for improved headless mode
+                protocolTimeout: 180000, // Increased protocol timeout for stability
+                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined, // Use default if not set
                 args: [
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
                     '--disable-dev-shm-usage',
                     '--disable-gpu',
-                    '--disable-features=site-per-process',
+                    '--disable-features=IsolateOrigins,site-per-process', // More stable site isolation
                     '--disable-web-security',
-                    '--disable-http2',  // Disable HTTP/2
+                    '--disable-http2', // Disable HTTP/2 if causing issues
                     '--proxy-server="direct://"',
-                    '--proxy-bypass-list=*'
-                ]
+                    '--proxy-bypass-list=*',
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-renderer-backgrounding',
+                    '--disable-accelerated-2d-canvas',
+                    '--disable-ipc-flooding-protection',
+                    '--enable-features=NetworkService,NetworkServiceInProcess',
+                ],
+                ignoreDefaultArgs: ['--disable-extensions'], // Allow extensions if needed
+                defaultViewport: null, // Avoid viewport resizing issues
             });
 
             uploadPage = await browser.newPage();
@@ -232,28 +231,51 @@ async function uploadToTeraBox(filePath, fileName) {
     return { success: false, error: "Upload failed after multiple attempts." };
 }
 
-app.post('/upload', upload.single('file'), async (req, res) => {
-    if (!req.file) {
-        return res.status(400).json({ success: false, message: "No file uploaded." });
-    }
+app.post('/upload', (req, res) => {
+    let receivedBytes = 0;
+    let loggedMB = 0;
+    const filePath = path.join(uploadDir, `${Date.now()}-${req.headers['filename'] || 'uploaded_file'}`);
+    const writeStream = fs.createWriteStream(filePath);
 
-    console.log(`📥 Received file: ${req.file.originalname}`);
+    console.log("📥 Upload started...");
 
-    try {
-        const result = await uploadToTeraBox(req.file.path, req.file.originalname);
+    req.on('data', (chunk) => {
+        receivedBytes += chunk.length;
+        writeStream.write(chunk);
 
-        if (!result.success) {
-            console.error("❌ Upload failed:", result.error);
-            return res.status(500).json({ success: false, message: result.error || "Upload failed." });
+        // Log every 1MB received
+        const receivedMB = Math.floor(receivedBytes / (1024 * 1024));
+        if (receivedMB > loggedMB) {
+            loggedMB = receivedMB;
+            console.log(`📊 Received: ${receivedMB}MB`);
         }
+    });
 
-        console.log("✅ Upload successful, sending JSON response...");
-        res.json(result);  // <-- Ensure this is sent properly
-    } catch (error) {
-        console.error("❌ Server error:", error);
-        res.status(500).json({ success: false, message: "Internal server error." });
-    }
+    req.on('end', async () => {
+        writeStream.end();
+        console.log(`✅ Upload complete. Total size: ${(receivedBytes / (1024 * 1024)).toFixed(2)}MB`);
+
+        try {
+            const result = await uploadToTeraBox(filePath, req.headers['filename'] || 'uploaded_file');
+
+            if (!result.success) {
+                console.error("❌ Upload failed:", result.error);
+                return res.status(500).json({ success: false, message: result.error || "Upload failed." });
+            }
+
+            res.json(result);
+        } catch (error) {
+            console.error("❌ Server error:", error);
+            res.status(500).json({ success: false, message: "Internal server error." });
+        }
+    });
+
+    req.on('error', (err) => {
+        console.error("❌ Upload error:", err);
+        res.status(500).json({ success: false, message: "Upload interrupted." });
+    });
 });
+
 
 
 const server = app.listen(port, () => {
