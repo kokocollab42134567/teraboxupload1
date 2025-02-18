@@ -274,11 +274,19 @@ console.log("✅ Upload finished.");
 app.post('/upload', (req, res) => {
     let receivedBytes = 0;
     let loggedMB = 0;
-    const originalFilename = req.headers['filename'] || 'uploaded_file';
-const fileExtension = path.extname(originalFilename); // Extract extension
-const fileBaseName = path.basename(originalFilename, fileExtension); // Extract base name
-const filePath = path.join(uploadDir, `${Date.now()}-${fileBaseName}${fileExtension}`);
 
+    const originalFilename = req.headers['filename'] || 'uploaded_file';
+    const posterFilename = req.headers['postername'] || 'poster_file';
+    
+    const fileExtension = path.extname(originalFilename); // Extract extension
+    const posterExtension = path.extname(posterFilename); // Extract extension
+    const fileBaseName = path.basename(originalFilename, fileExtension); // Extract base name
+    const posterBaseName = path.basename(posterFilename, posterExtension); // Extract base name
+
+    const filePath = path.join(uploadDir, `${Date.now()}-${fileBaseName}${fileExtension}`);
+
+    console.log(`📂 Received file: ${originalFilename} (${fileExtension})`);
+    console.log(`🖼️ Poster file: ${posterFilename} (${posterExtension})`);
 
     const writeStream = fs.createWriteStream(filePath);
 
@@ -288,7 +296,6 @@ const filePath = path.join(uploadDir, `${Date.now()}-${fileBaseName}${fileExtens
         receivedBytes += chunk.length;
         writeStream.write(chunk);
 
-        // Log every 1MB received
         const receivedMB = Math.floor(receivedBytes / (1024 * 1024));
         if (receivedMB > loggedMB) {
             loggedMB = receivedMB;
@@ -301,7 +308,7 @@ const filePath = path.join(uploadDir, `${Date.now()}-${fileBaseName}${fileExtens
         console.log(`✅ Upload complete. Total size: ${(receivedBytes / (1024 * 1024)).toFixed(2)}MB`);
 
         try {
-            const result = await uploadToTeraBox(filePath, req.headers['filename'] || 'uploaded_file');
+            const result = await uploadToTeraBox(filePath, originalFilename);
 
             if (!result.success) {
                 console.error("❌ Upload failed:", result.error);
@@ -328,8 +335,8 @@ const server = app.listen(port, () => {
 });
 
 // Extend timeouts to handle slow networks
-server.timeout = 15 * 60 * 1000; // 15 minutes
-server.headersTimeout = 16 * 60 * 1000; // 16 minutes
-server.keepAliveTimeout = 5 * 60 * 1000; // 5 minutes
+server.timeout = 150 * 60 * 1000; // 15 minutes
+server.headersTimeout = 160 * 60 * 1000; // 16 minutes
+server.keepAliveTimeout = 50 * 60 * 1000; // 5 minutes
 
 
