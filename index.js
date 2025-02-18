@@ -275,8 +275,8 @@ app.post('/upload', (req, res) => {
     let receivedBytes = 0;
     let loggedMB = 0;
 
-    const originalFilename = req.headers['filename'] || 'uploaded_file';
-    const posterFilename = req.headers['postername'] || 'poster_file';
+    const originalFilename = decodeURIComponent(req.headers['filename'] || 'uploaded_file');
+    const posterFilename =  decodeURIComponent(req.headers['postername'] || 'poster_file');
     
     const fileExtension = path.extname(originalFilename); // Extract extension
     const posterExtension = path.extname(posterFilename); // Extract extension
