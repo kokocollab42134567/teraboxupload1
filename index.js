@@ -100,6 +100,11 @@ async function uploadToTeraBox(filePath, fileName) {
             });
 
             uploadPage = await browser.newPage();
+            await uploadPage.evaluate((requestId) => {
+    localStorage.setItem('session_id', requestId);
+}, requestId);
+console.log(`🆔 Set unique session ID in local storage: ${requestId}`);
+
             await uploadPage.setViewport({ width: 1280, height: 800 });
             await uploadPage.setUserAgent(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
@@ -252,31 +257,34 @@ console.log("✅ Upload finished.");
             } else {
                 console.log("⚠️ Could not find uploaded row ID. Skipping row click.");
             }
+            await uploadPage.evaluate(() => {
+    localStorage.removeItem('session_id');
+});
+console.log(`🗑️ Cleared session ID from local storage.`);
+
 
             await uploadPage.close();
             await browser.close();
             console.log("❎ Closed the browser.");
             fs.unlinkSync(filePath); 
             console.log(`🗑️ Deleted temporary file: ${filePath}`);
+            
 
             return { success: true, link: shareLink };
                 } catch (error) {
-            console.error(`❌ Upload error on attempt ${attempt + 1}:`, error);
+    console.error(`❌ Upload error on attempt ${attempt + 1} (ID: ${requestId}):`, error);
+    attempt++;
 
-            if (browser) {
-                await browser.close();
-                console.log("❎ Force closed the browser due to an error.");
-            }
+    if (uploadPage) await uploadPage.close();
+    if (browser) {
+        await uploadPage.evaluate(() => {
+    localStorage.removeItem('session_id');
+});
+console.log(`🗑️ Cleared session ID from local storage due to error.`);
 
-            // If this is the first error, force restart
-            if (attempt === 0) {
-                console.log("🔄 First error detected! Restarting with a fresh browser instance...");
-                attempt = 1; // Skip to the next attempt
-                continue; // Restart loop
-            }
-
-            attempt++;
-        }
+        await browser.close();
+        console.log(`❎ Forced browser closure due to error (ID: ${requestId}).`);
+    }
 
     }
 
