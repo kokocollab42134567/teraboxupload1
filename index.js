@@ -104,69 +104,79 @@ async function uploadToTeraBox(filePath, fileName) {
             await uploadPage.waitForSelector(fileInputSelector, { visible: true, timeout: 20000 });
 
 // **Store the initial first row ID**
-            const firstRowSelector = 'tbody tr:first-child';
-            let initialRowId = await uploadPage.evaluate((selector) => {
-                const row = document.querySelector(selector);
-                return row ? row.getAttribute('data-id') : null;
-            }, firstRowSelector);
+            // **Store the initial first row ID**
+const firstRowSelector = 'tbody tr:first-child';
+let initialRowId = await uploadPage.evaluate((selector) => {
+    const row = document.querySelector(selector);
+    return row ? row.getAttribute('data-id') : null;
+}, firstRowSelector);
 
-            console.log("📌 Stored initial first row ID:", initialRowId);
+console.log("📌 Stored initial first row ID:", initialRowId);
+console.log(`📤 Uploading file: ${fileName} (Request ID: ${requestId})`);
 
-            console.log(`📤 Uploading file: ${fileName} (Request ID: ${requestId})`);
+const inputUploadHandle = await uploadPage.$(fileInputSelector);
+await inputUploadHandle.uploadFile(filePath);
+console.log(`📤 File selected for upload: ${filePath}`);
 
-            const inputUploadHandle = await uploadPage.$(fileInputSelector);
-            await inputUploadHandle.uploadFile(filePath);
-            console.log(`📤 File selected for upload: ${filePath}`);
+// **Wait for upload progress or success**
+console.log("⏳ Checking for upload status...");
 
-// **Track Upload Progress Dynamically**
-            // **Wait for upload progress or log upload list structure**
-            console.log("⏳ Checking for upload progress...");
-            const progressSelector = '#uploaderList .status-uploading.file-list .progress-now.progress-common';
+const successSelector = '.status-success.file-list';
+const progressSelector = '.status-uploading.file-list .progress-now.progress-common';
 
-            try {
-                await uploadPage.waitForSelector(progressSelector, { visible: true, timeout: 10000 });
-                console.log("📊 Upload progress detected.");
-            } catch (error) {
-                console.log("⚠️ Upload progress bar not found, checking upload list structure...");
-                const uploadListHTML = await uploadPage.evaluate(() => {
-                    const uploadList = document.querySelector('.dialog-body');
-                    return uploadList ? uploadList.innerHTML : "No upload list found.";
-                });
-                console.log("📌 Upload List Structure:", uploadListHTML);
-            }
+try {
+    // Check if file is already marked as uploaded (fast uploads)
+    const isUploaded = await uploadPage.evaluate((selector) => {
+        return !!document.querySelector(selector);
+    }, successSelector);
 
-            // **Track Upload Progress Dynamically**
-            await new Promise(async (resolve) => {
-                let lastProgress = "";
+    if (isUploaded) {
+        console.log("✅ Upload completed instantly (Success detected).");
+    } else {
+        console.log("⏳ Upload in progress, tracking dynamically...");
 
-                const checkProgress = async () => {
-                    try {
-                        const progress = await uploadPage.evaluate((selector) => {
-                            const progressElement = document.querySelector(selector);
-                            return progressElement ? progressElement.style.width : null;
-                        }, progressSelector);
+        // **Track Upload Progress Dynamically**
+        await new Promise(async (resolve) => {
+            let lastProgress = "";
 
-                        if (progress && progress !== lastProgress) {
-                            console.log(`📊 Upload Progress: ${progress}`);
-                            lastProgress = progress;
-                        }
+            const checkProgress = async () => {
+                try {
+                    const progress = await uploadPage.evaluate((selector) => {
+                        const progressElement = document.querySelector(selector);
+                        return progressElement ? progressElement.style.width : null;
+                    }, progressSelector);
 
-                        if (progress === "100%") {
-                            console.log("✅ Upload completed!");
-                            resolve();
-                        } else {
-                            setTimeout(checkProgress, 1000);
-                        }
-                    } catch (error) {
-                        console.log("⚠️ Error tracking progress, but upload is still ongoing...");
+                    if (progress && progress !== lastProgress) {
+                        console.log(`📊 Upload Progress: ${progress}`);
+                        lastProgress = progress;
+                    }
+
+                    // **Check if upload finished successfully**
+                    const isUploaded = await uploadPage.evaluate((selector) => {
+                        return !!document.querySelector(selector);
+                    }, successSelector);
+
+                    if (isUploaded || progress === "100%") {
+                        console.log("✅ Upload completed!");
+                        resolve();
+                    } else {
                         setTimeout(checkProgress, 1000);
                     }
-                };
+                } catch (error) {
+                    console.log("⚠️ Error tracking progress, but upload is still ongoing...");
+                    setTimeout(checkProgress, 1000);
+                }
+            };
 
-                checkProgress();
-            });
+            checkProgress();
+        });
+    }
+} catch (error) {
+    console.log("⚠️ Upload tracking encountered an error:", error);
+}
 
-            console.log("✅ Upload finished.");
+console.log("✅ Upload finished.");
+
 
 // **Wait for upload to complete by detecting new row ID**
             console.log("⏳ Waiting for the upload to complete...");
