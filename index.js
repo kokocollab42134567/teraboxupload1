@@ -6,7 +6,19 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 
+const SELF_CHECK_URL = "https://teraboxupload1-production.up.railway.app/hi";
 
+async function checkServerHealth() {
+    try {
+        const response = await axios.get(SELF_CHECK_URL);
+        console.log(`🔄 Self-check response: ${response.data}`);
+    } catch (error) {
+        console.error("❌ Self-check failed:", error.message);
+    }
+}
+
+// Run the health check every 10 seconds
+setInterval(checkServerHealth, 10000);
 
 
 const app = express();
@@ -25,7 +37,10 @@ app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 // Enable CORS
 app.use(cors());
-
+app.get('/hi', (req, res) => {
+    console.log("✅ /hi endpoint was accessed.");
+    res.send("hi");
+});
 // Ensure the uploads directory exists
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) {
