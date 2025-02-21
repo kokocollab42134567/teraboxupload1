@@ -6,22 +6,72 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 
-const SELF_CHECK_URL = "https://teraboxupload1-production.up.railway.app/hi";
 
-async function checkServerHealth() {
-    try {
-        const response = await axios.get(SELF_CHECK_URL);
-        console.log(`🔄 Self-check response: ${response.data}`);
-    } catch (error) {
-        console.error("❌ Self-check failed:", error.message);
-    }
-}
-
-// Run the health check every 10 seconds
-setInterval(checkServerHealth, 10000);
 
 
 const app = express();
+
+const COOKIES_FILE = path.join(__dirname, 'terabox_cookies.json');
+const LOGIN_URL = 'https://www.terabox.com/';
+const EMAIL = 'rrymouss@gmail.com';
+const PASSWORD = 'kokohihi.123';
+const UPDATE_INTERVAL = 3 * 24 * 60 * 60 * 1000; // 3 days in milliseconds
+
+// Function to log in and update cookies
+async function updateCookies() {
+    const browser = await puppeteer.launch({ headless: "new" }); // Change to 'true' for a hidden browser
+    const page = await browser.newPage();
+
+    console.log('Opening TeraBox...');
+    await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+
+    // Click the login button
+    await page.waitForSelector('.lgoin-btn', { timeout: 10000 });
+    await page.click('.lgoin-btn');
+
+    // Wait for the "Other Login Options" section
+    await page.waitForSelector('.other-item', { timeout: 10000 });
+
+    // Click the second div inside .other-item (email login)
+    await page.evaluate(() => {
+        document.querySelectorAll('.other-item div')[1].click();
+    });
+
+    // Wait for email/password fields
+    await page.waitForSelector('#email-input', { timeout: 10000 });
+    await page.waitForSelector('#pwd-input', { timeout: 10000 });
+    await page.waitForSelector('.btn-class-login', { timeout: 10000 });
+
+    // Fill login details
+    await page.type('#email-input', EMAIL, { delay: 100 });
+    await page.type('#pwd-input', PASSWORD, { delay: 100 });
+
+    // Click login button
+    await page.click('.btn-class-login');
+
+    // Wait for login to complete
+    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
+
+    console.log('Login successful! Saving cookies...');
+    const cookies = await page.cookies();
+    const fs = require('fs-extra');
+await fs.writeJson(COOKIES_FILE, cookies, { spaces: 2 });
+
+
+    console.log(`Cookies updated and saved to ${COOKIES_FILE}`);
+    await browser.close();
+}
+
+// Function to schedule cookie updates every 3 days
+async function scheduleCookieUpdates() {
+    console.log('Cookie updater started. Running every 3 days...');
+    await updateCookies(); // Run once immediately
+    setInterval(updateCookies, UPDATE_INTERVAL); // Schedule updates every 3 days
+}
+
+// Start the updater
+scheduleCookieUpdates();
+
 const port = process.env.PORT || 3000;
 const COOKIES_PATH = path.resolve(__dirname, 'terabox_cookies.json');
 app.use((req, res, next) => {
@@ -37,10 +87,7 @@ app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 // Enable CORS
 app.use(cors());
-app.get('/hi', (req, res) => {
-    console.log("✅ /hi endpoint was accessed.");
-    res.send("hi");
-});
+
 // Ensure the uploads directory exists
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) {
@@ -74,7 +121,7 @@ async function uploadToTeraBox(filePath, fileName) {
 
             // Launch a new isolated browser instance
             const browser = await puppeteer.launch({
-                headless: 'new',  // Use 'new' for improved headless mode
+                headless: "new",  // Use 'new' for improved headless mode
                 protocolTimeout: 180000, // Increased protocol timeout for stability
                 executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined, // Use default if not set
                 args: [
@@ -275,8 +322,8 @@ app.post('/upload', (req, res) => {
     let receivedBytes = 0;
     let loggedMB = 0;
     const originalFilename = req.headers['filename'] || 'uploaded_file';
-    const fileExtension = path.extname(originalFilename) || ''; // Get file extension
-    const filePath = path.join(uploadDir, `${Date.now()}-${originalFilename}${fileExtension}`);
+    const filePath = path.join(uploadDir, `${Date.now()}-${originalFilename}`);
+
 
     const writeStream = fs.createWriteStream(filePath);
 
@@ -318,14 +365,78 @@ app.post('/upload', (req, res) => {
         res.status(500).json({ success: false, message: "Upload interrupted." });
     });
 });
+app.get('/download', async (req, res) => {
+    const { filename } = req.query;
+    if (!filename) {
+        return res.status(400).json({ success: false, message: "Filename is required." });
+    }
 
+    try {
+        console.log(`🔍 Searching for file: ${filename}`);
+        const browser = await puppeteer.launch({
+            headless: "new",
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        });
+        const page = await browser.newPage();
+
+        // Load cookies if available
+        if (fs.existsSync(COOKIES_PATH)) {
+            const cookies = JSON.parse(fs.readFileSync(COOKIES_PATH, 'utf8'));
+            await page.setCookie(...cookies);
+        }
+
+        await page.goto(`https://www.terabox.com/main?category=all&search=${encodeURIComponent(filename)}`, { waitUntil: 'domcontentloaded' });
+
+        const firstRowSelector = 'tbody tr:first-child';
+        await page.waitForSelector(firstRowSelector, { visible: true, timeout: 30000 });
+        await page.click(firstRowSelector);
+        console.log("✅ Selected first row");
+
+        const checkboxSelector = 'tbody tr:first-child .wp-s-pan-table__body-row--checkbox-block.is-select';
+        await page.waitForSelector(checkboxSelector, { visible: true });
+        await page.click(checkboxSelector);
+        console.log("✅ Selected checkbox");
+
+        const downloadButtonSelector = '.u-button-group.wp-s-agile-tool-bar__h-button-group.is-list.is-has-more div:nth-child(2)';
+        await page.waitForSelector(downloadButtonSelector, { visible: true });
+
+        // Intercept network requests to detect the file download URL
+        let downloadLink = null;
+
+        const waitForDownloadLink = new Promise((resolve) => {
+            page.on('response', async (response) => {
+                const url = response.url();
+                if (url.startsWith("https://d-jp02-zen.terabox.com/file/")) {
+                    downloadLink = url;
+                    console.log(`🔗 Captured download link: ${downloadLink}`);
+                    resolve();
+                }
+            });
+        });
+
+        await page.click(downloadButtonSelector);
+        console.log("⬇️ Clicked second download button");
+
+        // Wait until the network captures the download link
+        await waitForDownloadLink;
+
+        await browser.close();
+
+        if (downloadLink) {
+            res.json({ success: true, downloadLink });
+        } else {
+            res.status(500).json({ success: false, message: "Failed to capture download link." });
+        }
+    } catch (error) {
+        console.error("❌ Download error:", error);
+        res.status(500).json({ success: false, message: "Failed to retrieve download link." });
+    }
+});
 
 
 const server = app.listen(port, () => {
     console.log(`🚀 Server running at http://localhost:${port}`);
 });
+server.timeout = 600000; // 10 minutes
+server.headersTimeout = 650000; // Increase header timeout
 
-// Extend timeouts to handle slow networks
-server.timeout = 150 * 60 * 1000; // 15 minutes
-server.headersTimeout = 160 * 60 * 1000; // 16 minutes
-server.keepAliveTimeout = 50 * 60 * 1000; // 5 minutes
