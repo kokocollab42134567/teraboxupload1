@@ -346,8 +346,14 @@ console.log("✅ Upload finished.");
 app.post('/upload', (req, res) => {
     let receivedBytes = 0;
     let loggedMB = 0;
-    const originalFilename = req.headers['filename'] || 'uploaded_file';
-    const filePath = path.join(uploadDir, `${Date.now()}-${originalFilename}`);
+    const originalFilename = req.headers['filename']; // Get filename from header
+
+if (!originalFilename) {
+    return res.status(400).json({ success: false, message: "Filename is required in headers." });
+}
+
+const filePath = path.join(uploadDir, originalFilename); // Use filename as is
+
 
 
     const writeStream = fs.createWriteStream(filePath);
