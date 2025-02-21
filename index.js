@@ -77,8 +77,10 @@ async function updateCookies() {
 
     console.log('Login successful! Saving cookies...');
     const cookies = await page.cookies();
-    const fs = require('fs-extra');
-await fs.writeJson(COOKIES_FILE, cookies, { spaces: 2 });
+    const fs = require('fs'); // Use the standard fs module
+
+await fs.promises.writeFile(COOKIES_FILE, JSON.stringify(cookies, null, 2));
+
 
 
     console.log(`Cookies updated and saved to ${COOKIES_FILE}`);
