@@ -19,7 +19,30 @@ const UPDATE_INTERVAL = 3 * 24 * 60 * 60 * 1000; // 3 days in milliseconds
 
 // Function to log in and update cookies
 async function updateCookies() {
-    const browser = await puppeteer.launch({ headless: "new" }); // Change to 'true' for a hidden browser
+    const browser = await puppeteer.launch({
+        headless: true,  // Use 'new' for improved headless mode
+        protocolTimeout: 180000, // Increased protocol timeout for stability
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined, // Use default if not set
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--disable-features=IsolateOrigins,site-per-process', // More stable site isolation
+            '--disable-web-security',
+            '--disable-http2', // Disable HTTP/2 if causing issues
+            '--proxy-server="direct://"',
+            '--proxy-bypass-list=*',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--disable-accelerated-2d-canvas',
+            '--disable-ipc-flooding-protection',
+            '--enable-features=NetworkService,NetworkServiceInProcess',
+        ],
+        ignoreDefaultArgs: ['--disable-extensions'], // Allow extensions if needed
+        defaultViewport: null, // Avoid viewport resizing issues
+    });
     const page = await browser.newPage();
 
     console.log('Opening TeraBox...');
@@ -121,7 +144,7 @@ async function uploadToTeraBox(filePath, fileName) {
 
             // Launch a new isolated browser instance
             const browser = await puppeteer.launch({
-                headless: "new",  // Use 'new' for improved headless mode
+                headless: true,  // Use 'new' for improved headless mode
                 protocolTimeout: 180000, // Increased protocol timeout for stability
                 executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined, // Use default if not set
                 args: [
@@ -374,8 +397,28 @@ app.get('/download', async (req, res) => {
     try {
         console.log(`🔍 Searching for file: ${filename}`);
         const browser = await puppeteer.launch({
-            headless: "new",
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
+            headless: true,  // Use 'new' for improved headless mode
+            protocolTimeout: 180000, // Increased protocol timeout for stability
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined, // Use default if not set
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--disable-features=IsolateOrigins,site-per-process', // More stable site isolation
+                '--disable-web-security',
+                '--disable-http2', // Disable HTTP/2 if causing issues
+                '--proxy-server="direct://"',
+                '--proxy-bypass-list=*',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-renderer-backgrounding',
+                '--disable-accelerated-2d-canvas',
+                '--disable-ipc-flooding-protection',
+                '--enable-features=NetworkService,NetworkServiceInProcess',
+            ],
+            ignoreDefaultArgs: ['--disable-extensions'], // Allow extensions if needed
+            defaultViewport: null, // Avoid viewport resizing issues
         });
         const page = await browser.newPage();
 
