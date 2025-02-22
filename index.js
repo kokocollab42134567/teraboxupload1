@@ -86,7 +86,7 @@ await fs.promises.writeFile(COOKIES_FILE, JSON.stringify(cookies, null, 2));
     console.log(`Cookies updated and saved to ${COOKIES_FILE}`);
     await browser.close();
 }
-const SELF_CHECK_URL = "https://teraboxupload1.onrender.com/hi";
+const SELF_CHECK_URL = "https://teraboxupload1-production.up.railway.app/hi";
 
 async function checkServerHealth() {
     try {
