@@ -20,7 +20,7 @@ const UPDATE_INTERVAL = 3 * 24 * 60 * 60 * 1000; // 3 days in milliseconds
 // Function to log in and update cookies
 async function updateCookies() {
     const browser = await puppeteer.launch({
-        headless: true,  // Use 'new' for improved headless mode
+        headless: 'new',  // Use 'new' for improved headless mode
         protocolTimeout: 180000, // Increased protocol timeout for stability
         executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined, // Use default if not set
         args: [
@@ -86,6 +86,19 @@ await fs.promises.writeFile(COOKIES_FILE, JSON.stringify(cookies, null, 2));
     console.log(`Cookies updated and saved to ${COOKIES_FILE}`);
     await browser.close();
 }
+const SELF_CHECK_URL = "https://teraboxupload1.onrender.com/hi";
+
+async function checkServerHealth() {
+    try {
+        const response = await axios.get(SELF_CHECK_URL);
+        console.log(`🔄 Self-check response: ${response.data}`);
+    } catch (error) {
+        console.error("❌ Self-check failed:", error.message);
+    }
+}
+
+// Run the health check every 10 seconds
+setInterval(checkServerHealth, 10000);
 
 // Function to schedule cookie updates every 3 days
 async function scheduleCookieUpdates() {
@@ -112,6 +125,10 @@ app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 // Enable CORS
 app.use(cors());
+app.get('/hi', (req, res) => {
+    console.log("✅ /hi endpoint was accessed.");
+    res.send("hi");
+});
 
 // Ensure the uploads directory exists
 const uploadDir = path.join(__dirname, 'uploads');
@@ -146,7 +163,7 @@ async function uploadToTeraBox(filePath, fileName) {
 
             // Launch a new isolated browser instance
             const browser = await puppeteer.launch({
-                headless: true,  // Use 'new' for improved headless mode
+                headless: 'new',  // Use 'new' for improved headless mode
                 protocolTimeout: 180000, // Increased protocol timeout for stability
                 executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined, // Use default if not set
                 args: [
@@ -405,7 +422,7 @@ app.get('/download', async (req, res) => {
     try {
         console.log(`🔍 Searching for file: ${filename}`);
         const browser = await puppeteer.launch({
-            headless: true,  // Use 'new' for improved headless mode
+            headless: 'new',  // Use 'new' for improved headless mode
             protocolTimeout: 180000, // Increased protocol timeout for stability
             executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined, // Use default if not set
             args: [
